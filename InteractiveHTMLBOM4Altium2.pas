@@ -201,6 +201,11 @@ Begin
   // CurrString := StringReplace( CurrString, '<DATE>',    DateStr,    MkSet( rfReplaceAll, rfIgnoreCase ) );
 End;
 
+function JSONFloatToStr(v:Single):String;
+begin
+  Result := StringReplace(FloatToStr(v), ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
+end;
+
 function PickAndPlaceOutputEx:String;
 var
     Board                          : IPCB_Board; // document board object
@@ -223,12 +228,13 @@ var
     PadsCount: Integer;
     PadLayer,PadType:String;
     PadX, PadY, PadAngle : TString;
-    X1,Y1,X2,Y2: Single;
+    X1,Y1,X2,Y2,_W,_H: Single;
     Width, Height :String;
     PadWidth, PadHeight, PadPin1 :String;
     PadShape,PadDrillShape:String;
+    PadDrillWidth,PadDrillHeight:String;
     EdgeType:String;
-    EdgeWidth,EdgeX1,EdgeY1,EdgeX2,EdgeY2,EdgeRadius: String;
+    EdgeWidth,EdgeHeight,EdgeX1,EdgeY1,EdgeX2,EdgeY2,EdgeRadius: String;
 Begin
    // Make sure the current Workspace opens or else quit this script
   CurrWorkSpace := GetWorkSpace;
@@ -380,7 +386,14 @@ Begin
 
                   PadShape :='circle';
                   case (Pad.TopShape) of
-                    1:PadShape :='circle';//(res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
+                    1:
+                    begin
+                    if PadWidth=PadHeight then
+                    PadShape :='circle'
+                    else
+                    PadShape :='oval';
+                    //(res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
+                    end;
                     2:PadShape :='rect';
                     //3:PadShape :='chamfrect';
                     9:PadShape :='roundrect';
@@ -397,7 +410,14 @@ Begin
                   PadHeight := FloatToStr(CoordToMMs(Prim.BotYSize));
                   PadShape :='circle';
                   case (Pad.BotShape) of
-                    1:PadShape :='circle';//(res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
+                    1:
+                    begin
+                    if PadWidth=PadHeight then
+                    PadShape :='circle'
+                    else
+                    PadShape :='oval';
+                    //(res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
+                    end;
                     2:PadShape :='rect';
                     //3:PadShape :='chamfrect';
                     9:PadShape :='roundrect';
@@ -414,15 +434,26 @@ Begin
                   //TODO: Is it norm?
                   PadShape :='circle';
                   case (Pad.TopShape) of
-                    1:PadShape :='circle';//(res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
-                    2:PadShape :='rect';
+                    1: begin
+                    if PadWidth=PadHeight then
+                    PadShape :='circle'
+                    else
+                    PadShape :='oval';
+                    //(res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
+                    end;
                     //3:PadShape :='chamfrect';
                     9:PadShape :='roundrect';
 //                default:
                     //res['shape'] :='custom';
                   end;
                   case (Pad.BotShape) of
-                    1:PadShape :='circle';//(res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
+                    1:begin
+                                        if PadWidth=PadHeight then
+                    PadShape :='circle'
+                    else
+                    PadShape :='oval';
+                    //(res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
+                    end;
                     2:PadShape :='rect';
                     //3:PadShape :='chamfrect';
                     9:PadShape :='roundrect';
@@ -435,15 +466,21 @@ Begin
                 begin
                     //res["drillsize"] = [CoordToMMs(Prim.HoleSize).round(), CoordToMMs(Prim.HoleSize).round()];
                     PadDrillShape := 'circle';
+                    PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+                    PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
                     end;
                 1: // square, but not supported in kicad, so do as circle
                 begin
                     //res["drillsize"] = [CoordToMMs(Prim.HoleSize).round(), CoordToMMs(Prim.HoleSize).round()];
                     PadDrillShape := 'circle';
+                    PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+                    PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
                     end;
                 2: // slot
                 begin
                     //res["drillsize"] = [CoordToMMs(Prim.HoleWidth).round(), CoordToMMs(Prim.HoleSize).round()];
+                    PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleWidth));
+                    PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
                     PadDrillShape := 'oblong';
                     end;
                 //default:  //
@@ -476,6 +513,8 @@ Begin
                 if PadType='th' then
                 begin
                 PnPout.Add('"DrillShape":'+'"'+Preprocess(PadDrillShape)+'"'+',');
+                PnPout.Add('"DrillWidth":'+'"'+Preprocess(PadDrillWidth)+'"'+',');
+                PnPout.Add('"DrillHeight":'+'"'+Preprocess(PadDrillHeight)+'"'+',');
                 end;
                // PnPout.Add('"Debug":'+'"'+Preprocess(Prim.Layer)+'"'+',');
                 PnPout.Add('"X":'+'"'+Preprocess(PadX)+'"'+',');
@@ -627,18 +666,86 @@ var start = [CoordToMMs(Prim.x1).round(), -CoordToMMs(Prim.y1).round()];
     Iter :=Board.BoardIterator_Create;
     //Iter.AddFilter_ObjectSet(eTrackObject);
     Iter.AddFilter_LayerSet(MkSet(eTopOverlay,eBottomOverlay));
-    Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject));
+    Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject, eTextObject));
     //Iter.AddFilter_ObjectSet(MkSet(eTrackObject));
     {Iter.AddFilter_LayerSet(MkSet(pcb.Layers.OUTLINE_LAYER));}
     Iter.AddFilter_Method(eProcessAll);
     Prim :=Iter.FirstPCBObject;
     while (Prim <> nil) do
     begin
+    //TODO: UGLY
+      if (Prim.ObjectId=eTextObject) and (Prim.IsHidden) then
+      begin
+        Prim :=Iter.NextPCBObject;
+        continue;
+      end;
+
       Inc(Count);
       If (Count>1) Then
         PnPout.Add(',');
 
       case (Prim.ObjectId) of
+          eTextObject:
+          begin
+            If (Prim.Layer = eTopOverlay) Then
+            Layer := 'TopOverlay'
+          Else If (Prim.Layer = eBottomOverlay) Then
+            Layer := 'BottomOverlay';
+
+          //                  X1 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Left- Board.XOrigin);
+          //      Y1 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Bottom- Board.YOrigin);
+          //      X2 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Right- Board.XOrigin);
+          //      Y2 :=CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Top- Board.YOrigin);
+
+        //var x0, y0, x1, y1;
+        X1 := CoordToMMs(Prim.BoundingRectangleForSelection.Left- Board.XOrigin);
+        Y1 := CoordToMMs(Prim.BoundingRectangleForSelection.Bottom- Board.YOrigin);
+        X2 := CoordToMMs(Prim.BoundingRectangleForSelection.Right- Board.XOrigin);
+        Y2 := CoordToMMs(Prim.BoundingRectangleForSelection.Top- Board.YOrigin);
+
+        _W := X2 - X1;
+        _H := Y2 - Y1;
+
+        EdgeX1 := JSONFloatToStr(X1+_W/2);
+        EdgeY1 := JSONFloatToStr(-(Y1+_H/2));
+
+        //bbox["size"] = [(x1 - x0).round(), (y1 - y0).round()];
+
+        //bbox["center"] = [(x0 + bbox.size[0] / 2).round(), -(y0 + bbox.size[1] / 2).round()];
+
+        EdgeX2 := JSONFloatToStr(Prim.Rotation);
+
+          EdgeRadius :='0';
+          if (Prim.MirrorFlag) then
+          EdgeRadius := '1';
+
+
+         if (Prim.TextKind = 0) then begin
+         //   res["thickness"] = CoordToMMs(Prim.Width).round();
+            EdgeHeight := JSONFloatToStr(CoordToMMs(Prim.Size));
+            EdgeWidth := EdgeHeight; // single char's width in kicad
+        end else if (Prim.TextKind = 1) then begin
+            EdgeHeight := JSONFloatToStr(CoordToMMs(Prim.TTFTextHeight * 0.6));
+            EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.TTFTextWidth * 0.9 / Length(Prim.Text)));
+           // res["thickness"] = CoordToMMs(res["height"] * 0.1);
+        end;
+
+
+           EdgeType := 'text';
+           PnPout.Add('{');
+           PnPout.Add('"Layer":'+'"'+Preprocess(Layer)+'"'+',');
+           PnPout.Add('"Type":'+'"'+Preprocess(EdgeType)+'"'+',');
+           //PnPout.Add('"Width":'+'"'+Preprocess(EdgeWidth)+'"'+',');
+           PnPout.Add('"X":'+'"'+Preprocess(EdgeX1)+'"'+',');
+           PnPout.Add('"Y":'+'"'+Preprocess(EdgeY1)+'"'+',');
+           PnPout.Add('"Width":'+'"'+Preprocess(EdgeWidth)+'"'+',');
+           PnPout.Add('"Height":'+'"'+Preprocess(EdgeHeight)+'"'+',');
+           PnPout.Add('"Angle":'+'"'+Preprocess(EdgeX2)+'"'+',');
+           //PnPout.Add('"Angle2":'+'"'+Preprocess(EdgeY2)+'"'+',');
+           PnPout.Add('"Mirrored":'+'"'+Preprocess(EdgeRadius)+'"'+',');
+           PnPout.Add('"Text":'+'"'+Preprocess(Prim.Text)+'"');
+           PnPout.Add('}');
+          end;
          eArcObject:
         begin
                  //   ;{edges.push(parseArc(Prim));}
@@ -762,6 +869,33 @@ var start = [CoordToMMs(Prim.x1).round(), -CoordToMMs(Prim.y1).round()];
     }
 End;
 
+function GenerConf(): String;
+var
+    PnPout                         : TStringList;
+Begin
+    PnPout   := TStringList.Create;
+
+    PnPout.Add('var config = {');
+    PnPout.Add('"show_fabrication":'+'"'+Preprocess('false')+'"'+',');
+    PnPout.Add('"redraw_on_drag":'+'"'+Preprocess('true')+'"'+',');
+    PnPout.Add('"highlight_pin1":'+'"'+Preprocess('none')+'"'+',');
+    PnPout.Add('"offset_back_rotation":'+'"'+Preprocess('false')+'"'+',');
+    PnPout.Add('"kicad_text_formatting":'+'"'+Preprocess('true')+'"'+',');
+    PnPout.Add('"dark_mode":'+'"'+Preprocess('false')+'"'+',');
+    PnPout.Add('"bom_view":'+'"'+Preprocess('left-right')+'"'+',');
+    PnPout.Add('"board_rotation":'+'"'+Preprocess('0.0')+'"'+',');
+    PnPout.Add('"checkboxes":'+'"'+Preprocess('Sourced,Placed')+'"'+',');
+    PnPout.Add('"show_silkscreen":'+'"'+Preprocess('true')+'"'+',');
+    PnPout.Add('"fields":'+''+Preprocess('["Value", "Footprint"]')+''+',');
+    PnPout.Add('"show_pads":'+'"'+Preprocess('true')+'"'+',');
+    PnPout.Add('"layer_view":'+'"'+Preprocess('FB')+'"'+',');
+    PnPout.Add('};');
+
+    Result := PnPout.Text;
+
+    PnPout.Free;
+end;
+
 function GetWDFileName(FF:String): String;
 var
   i: Integer;
@@ -826,7 +960,7 @@ begin
    //Result := StringReplace(a, '///'+'SPLITJS', e, MkSet(rfReplaceAll,rfIgnoreCase));
 end;
 
-procedure Gener(pcbdata:String);
+procedure Gener(pcbdata,config:String);
 var
   S: TStringList;
   Data: String;
@@ -841,8 +975,7 @@ begin
   Data := ReplaceEx(Data,'SPLITJS',GetWDFileName('web\split.js'));
   Data := ReplaceEx(Data,'LZ-STRING',GetWDFileName('web\lz-string.js'));
   Data := ReplaceEx(Data,'POINTER_EVENTS_POLYFILL',GetWDFileName('web\pep.js'));
-  //Data := ReplaceEx(Data,'CONFIG',AddSlash(TargetFolder) + TargetPrefix+'config.js');
-  Data := ReplaceEx(Data,'CONFIG',GetWDFileName('config.js'));
+  Data := ReplaceEx2(Data,'CONFIG',config);
   Data := ReplaceEx2(Data,'PCBDATA',pcbdata+#13#10+#13#10+StringLoadFromFile(GetWDFileName('helper.js')));
   Data := ReplaceEx(Data,'UTILJS',GetWDFileName('web\util.js'));
   Data := ReplaceEx(Data,'RENDERJS',GetWDFileName('web\render.js'));
@@ -1439,12 +1572,13 @@ end;
 
 procedure Generate(Parameters: String);
 var
-  f2, f5, tmp: String;
+  f2, f5, tmp, cfg: String;
 begin
   SetState_FromParameters(Parameters);
   FetchComponents(0);
   tmp := PickAndPlaceOutputEx;
-  Gener(tmp);
+  cfg := GenerConf();
+  Gener(tmp,cfg);
   f2 := GetOutputFileNameWithExtension('.csv');
   f5 := GetPluginExecutableFileName();
 end;
