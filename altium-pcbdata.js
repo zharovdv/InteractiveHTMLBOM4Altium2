@@ -45,6 +45,10 @@ function fromaltium(_data_) {
     tracks.B = [];
     tracks.F = [];
 
+    var zones = {};
+    zones.B = [];
+    zones.F = [];
+
     var edges = [];
 
     var edges_bbox = {};
@@ -128,6 +132,16 @@ function fromaltium(_data_) {
             pad.shape = itemPad.Shape;
             pad.size = [itemPad.Width * 1, itemPad.Height * 1];
             pad.type = itemPad.Type;
+            if (_data_.Settings.AddNets) {
+                //TODO: always true
+                pad.net = itemPad.Net;
+                if (itemPad.Net != "") {
+                    if (!(itemPad.Net in _nets)) {
+                        _nets[itemPad.Net] = itemPad.Net;
+                        nets.push(itemPad.Net);
+                    }
+                }
+            }
 
             footprint.pads.push(pad);
         }
@@ -188,12 +202,17 @@ function fromaltium(_data_) {
             segment.start = [item.X1 * 1, item.Y1 * 1];
             segment.type = "segment";
             segment.width = item.Width * 1;
-            segment.net = item.Net;
 
-            if (item.Net != "") {
-                if (!(item.Net in _nets)) {
-                    _nets[item.Net] = item.Net;
-                    nets.push(item.Net);
+            if (_data_.Settings.AddNets) {
+                if ((item.Layer == "TopLayer") || (item.Layer == "BottomLayer")) {
+                    segment.net = item.Net;
+                    //TODO: always true
+                    if (item.Net != "") {
+                        if (!(item.Net in _nets)) {
+                            _nets[item.Net] = item.Net;
+                            nets.push(item.Net);
+                        }
+                    }
                 }
             }
 
@@ -201,6 +220,33 @@ function fromaltium(_data_) {
             if (item.Layer == "BottomOverlay") drawings.silkscreen.B.push(segment);
             if (item.Layer == "TopLayer") tracks.F.push(segment);
             if (item.Layer == "BottomLayer") tracks.B.push(segment);
+        }
+        if (item.Type == "via") {
+            var segment = {};
+            segment.end = [item.X * 1, item.Y * 1];
+            segment.start = [item.X * 1, item.Y * 1];
+            segment.type = "segment";
+            segment.width = item.Width * 1;
+
+            if (_data_.Settings.AddNets) {
+                if ((item.Layer == "TopLayer") || (item.Layer == "BottomLayer") || (item.Layer == "MultiLayer")) {
+                    segment.net = item.Net;
+                    //TODO: always true
+                    if (item.Net != "") {
+                        if (!(item.Net in _nets)) {
+                            _nets[item.Net] = item.Net;
+                            nets.push(item.Net);
+                        }
+                    }
+                }
+            }
+
+            if (item.Layer == "TopLayer") tracks.F.push(segment);
+            if (item.Layer == "BottomLayer") tracks.B.push(segment);
+            if (item.Layer == "MultiLayer") {
+                tracks.F.push(segment);
+                tracks.B.push(segment);
+            }
         }
         if (item.Type == "arc") {
             var segment = {};
@@ -232,6 +278,50 @@ function fromaltium(_data_) {
             if (item.Layer == "TopOverlay") drawings.silkscreen.F.push(segment);
             if (item.Layer == "BottomOverlay") drawings.silkscreen.B.push(segment);
         }
+        if (item.Type == "polygon") {
+            var segment = {};
+            //segment.end = [item.X2 * 1, item.Y2 * 1];
+            //segment.start = [item.X1 * 1, item.Y1 * 1];
+            //segment.type = "polygon";
+            //segment.width = 1;//item.Width * 1;
+
+            if (_data_.Settings.AddNets) {
+                if ((item.Layer == "TopLayer") || (item.Layer == "BottomLayer")) {
+                    segment.net = item.Net;
+                    //TODO: always true
+                    if (item.Net != "") {
+                        if (!(item.Net in _nets)) {
+                            _nets[item.Net] = item.Net;
+                            nets.push(item.Net);
+                        }
+                    }
+                }
+            }
+
+            var polygons = [];
+
+            /*
+            for (const key in item.Points) {
+                var _p_ = item.Points[key];
+                polygons.push(_p_);
+            }
+             */
+            for (const _key_ in item.EX) {
+                var _ex_ = item.EX[_key_];
+                var p = [];
+                for (const _key2_ in _ex_) {
+                    p.push(_ex_[_key2_]);
+                }
+                polygons.push(p);
+            }
+
+            segment.polygons = polygons;//[polygons];
+
+            // if (item.Layer == "TopOverlay") drawings.silkscreen.F.push(segment);
+            // if (item.Layer == "BottomOverlay") drawings.silkscreen.B.push(segment);
+            if (item.Layer == "TopLayer") zones.F.push(segment);
+            if (item.Layer == "BottomLayer") zones.B.push(segment);
+        }
     }
 
     edges_bbox.maxx = _data_.BB.X2;
@@ -253,7 +343,10 @@ function fromaltium(_data_) {
     if (_data_.Settings.AddNets) {
         result.nets = nets;
     }
-    result.tracks = tracks;
+    if (_data_.Settings.AddTracks) {
+        result.tracks = tracks;
+        result.zones = zones;
+    }
 
     result.ibom_version = "v2.9.0";
 

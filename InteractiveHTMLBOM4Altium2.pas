@@ -20,6 +20,7 @@ Var
   PluginExecutable: String;
   DarkMode: Boolean;
   AddNets: Boolean;
+  AddTracks: Boolean;
   Highlighting1Pin: Boolean;
   FabLayer: Boolean;
 
@@ -216,7 +217,7 @@ begin
     MkSet(rfReplaceAll, rfIgnoreCase));
 end;
 
-function GetCompFromComp(pcbc:IPCB_Component):IComponent;
+function GetCompFromComp(pcbc: IPCB_Component): IComponent;
 begin
   // Make sure the current Workspace opens or else quit this script
   CurrWorkSpace := GetWorkSpace;
@@ -232,7 +233,7 @@ begin
   Result := nil;
 end;
 
-function GetFlatDoc:IDocument;
+function GetFlatDoc: IDocument;
 Begin
   FlattenedDoc := CurrProject.DM_DocumentFlattened;
 
@@ -302,7 +303,7 @@ Begin
   _pp.Free;
 end;
 
-function GetCompFromCompEx(pcbc:IPCB_Component):IComponent;
+function GetCompFromCompEx(pcbc: IPCB_Component): IComponent;
 Var
   CompIndex: Integer; // An Index for pullin out components
   PhysCompCount: Integer; // A count of the number of components in document
@@ -338,15 +339,15 @@ Begin
 
   CompCount := FlattenedDoc.DM_ComponentCount;
 
-  //Component.SourceUniqueId, Component.SourceDesignator
+  // Component.SourceUniqueId, Component.SourceDesignator
 
   For CompIndex := 0 To CompCount - 1 Do
   Begin
     CurrComponent := FlattenedDoc.DM_Components[CompIndex];
-    if CurrComponent.DM_UniqueId=pcbc.SourceUniqueId then
+    if CurrComponent.DM_UniqueId = pcbc.SourceUniqueId then
     begin
       Result := CurrComponent;
-      exit;
+      Exit;
     end;
   end;
 end;
@@ -373,7 +374,7 @@ var
   Count: Integer;
   FileName: TString;
   Document: IServerDocument;
-  X, Y, Rotation, Layer, Net: TString;
+  x, Y, Rotation, Layer, Net: TString;
   pcbDocPath: TString;
   flagRequirePcbDocFile: Boolean;
   Separator: TString;
@@ -392,6 +393,10 @@ var
   xxx: String;
   CurrParm: IParameter;
   NoBOM: Boolean;
+  k: Integer;
+  CI1, CO1: TObject;
+  contour: IPCB_Contour;
+  kk: Integer;
 Begin
   // Make sure the current Workspace opens or else quit this script
   CurrWorkSpace := GetWorkSpace;
@@ -442,15 +447,15 @@ Begin
 
   While (Component <> Nil) Do
   Begin
-    //ccc := CurrProject.FindComponent(Component.Designator);
-    //ccc := Component.GetComponent;
-    //xxx := ccc.DM_GetParameterByName('Component Kind');
-    //ShowMessage(xxx);
+    // ccc := CurrProject.FindComponent(Component.Designator);
+    // ccc := Component.GetComponent;
+    // xxx := ccc.DM_GetParameterByName('Component Kind');
+    // ShowMessage(xxx);
 
     NoBOM := False;
     ccc := GetCompFromCompEx(Component);
     CurrParm := ccc.DM_GetParameterByName('Component Kind');
-    //(CurrParm <> nil) and
+    // (CurrParm <> nil) and
     if (CurrParm.DM_Value = 'Standard (No BOM)') then
     begin
       NoBOM := True;
@@ -486,7 +491,7 @@ Begin
           Layer := 'TopLayer'
         Else
           Layer := 'BottomLayer';
-        X := FloatToStr(CoordToMMs(Component.X - Board.XOrigin));
+        x := FloatToStr(CoordToMMs(Component.x - Board.XOrigin));
         Y := FloatToStr(-CoordToMMs(Component.Y - Board.YOrigin));
         Rotation := IntToStr(Component.Rotation);
         // Component.Component.
@@ -494,7 +499,7 @@ Begin
         // PnPout.Add(Component.SourceDesignator  + #9 + Component.SourceLibReference + #9 + X + #9 + Y  + #9 + Rotation + #9 + Layer + #9 + Component.FootprintDescription+#9+Component.SourceUniqueId+#9+Component.Pattern+#9+Component.SourceFootprintLibrary+#9+Component.SourceLibReference);
         // PnPout.Add(Preprocess(Component.SourceDesignator)  + Separator + Preprocess('Comment') + Separator + Preprocess(Layer) + Separator + Preprocess(Component.SourceLibReference)  + Separator + Preprocess(Component.Pattern) + Separator + Preprocess(X) + Separator + Preprocess(Y) + Separator + Preprocess(Rotation) + Separator + Preprocess('Description') + Separator + Preprocess('SMD'));
 
-        X := StringReplace(X, ',', '.', MkSet(rfReplaceAll, rfIgnoreCase));
+        x := StringReplace(x, ',', '.', MkSet(rfReplaceAll, rfIgnoreCase));
         Y := StringReplace(Y, ',', '.', MkSet(rfReplaceAll, rfIgnoreCase));
 
         // TODO: Is it correct? X1,Y1 vs X,Y
@@ -515,7 +520,7 @@ Begin
         Height := StringReplace(Height, ',', '.',
           MkSet(rfReplaceAll, rfIgnoreCase));
 
-        X := StringReplace(FloatToStr(X1), ',', '.',
+        x := StringReplace(FloatToStr(X1), ',', '.',
           MkSet(rfReplaceAll, rfIgnoreCase));
         Y := StringReplace(FloatToStr(-Y2), ',', '.',
           MkSet(rfReplaceAll, rfIgnoreCase));
@@ -537,7 +542,7 @@ Begin
           '"' + ',');
         PnPout.Add('"PartNumber":' + '"' +
           Preprocess(Component.SourceLibReference) + '"' + ',');
-        PnPout.Add('"X":' + '"' + Preprocess(X) + '"' + ',');
+        PnPout.Add('"X":' + '"' + Preprocess(x) + '"' + ',');
         PnPout.Add('"Y":' + '"' + Preprocess(Y) + '"' + ',');
         PnPout.Add('"Width":' + '"' + Preprocess(Width) + '"' + ',');
         PnPout.Add('"Height":' + '"' + Preprocess(Height) + '"' + ',');
@@ -691,7 +696,7 @@ Begin
           PadHeight := StringReplace(PadHeight, ',', '.',
             MkSet(rfReplaceAll, rfIgnoreCase));
 
-          PadX := FloatToStr(CoordToMMs(Pad.X - Board.XOrigin));
+          PadX := FloatToStr(CoordToMMs(Pad.x - Board.XOrigin));
           PadY := FloatToStr(-CoordToMMs(Pad.Y - Board.YOrigin));
 
           PadX := StringReplace(PadX, ',', '.',
@@ -702,6 +707,10 @@ Begin
           PadAngle := FloatToStr(Pad.Rotation);
           PadAngle := StringReplace(PadAngle, ',', '.',
             MkSet(rfReplaceAll, rfIgnoreCase));
+
+          Net := 'No Net';
+          if Prim.Net <> nil then
+            Net := Prim.Net.Name;
 
           PnPout.Add('"Layer":' + '"' + Preprocess(PadLayer) + '"' + ',');
           PnPout.Add('"Type":' + '"' + Preprocess(PadType) + '"' + ',');
@@ -721,7 +730,8 @@ Begin
           PnPout.Add('"Width":' + '"' + Preprocess(PadWidth) + '"' + ',');
           PnPout.Add('"Height":' + '"' + Preprocess(PadHeight) + '"' + ',');
           PnPout.Add('"Angle":' + '"' + Preprocess(PadAngle) + '"' + ',');
-          PnPout.Add('"Pin1":' + '"' + Preprocess(PadPin1) + '"');
+          PnPout.Add('"Pin1":' + '"' + Preprocess(PadPin1) + '"' + ',');
+          PnPout.Add('"Net":' + '"' + Preprocess(Net) + '"');
 
           PnPout.Add('}');
           // pads :=pads.concat(parsePad(Prim));
@@ -879,8 +889,12 @@ Begin
 
   Iter := Board.BoardIterator_Create;
   // Iter.AddFilter_ObjectSet(eTrackObject);
-  Iter.AddFilter_LayerSet(MkSet(eTopOverlay, eBottomOverlay, eTopLayer, eBottomLayer));
-  Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject, eTextObject));
+  Iter.AddFilter_LayerSet(MkSet(eTopOverlay, eBottomOverlay, eTopLayer,
+    eBottomLayer, eMultiLayer));
+  Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject, eTextObject,
+    ePolyObject, eViaObject));
+  // eFillObject, eRegionObject
+  // Iter.AddFilter_ObjectSet(MkSet(eViaObject));
   // Iter.AddFilter_ObjectSet(MkSet(eTrackObject));
   { Iter.AddFilter_LayerSet(MkSet(pcb.Layers.OUTLINE_LAYER)); }
   Iter.AddFilter_Method(eProcessAll);
@@ -893,7 +907,22 @@ Begin
       Prim := Iter.NextPCBObject;
       continue;
     end;
-    if ((Prim.Layer = eTopLayer) or (Prim.Layer = eBottomLayer)) and (Prim.ObjectId <> eTrackObject) then
+    if ((Prim.Layer = eTopLayer) or (Prim.Layer = eBottomLayer)) and
+      (Prim.ObjectId <> eTrackObject) and (Prim.ObjectId <> eViaObject) and
+      (Prim.ObjectId <> ePolyObject) and (Prim.ObjectId <> eFillObject) and
+      (Prim.ObjectId <> eRegionObject) then
+    begin
+      Prim := Iter.NextPCBObject;
+      continue;
+    end;
+    if ((Prim.ObjectId = eFillObject) or (Prim.ObjectId = eRegionObject)) and
+      ((Prim.Layer <> eTopLayer) and (Prim.Layer <> eBottomLayer)) then
+    begin
+      Prim := Iter.NextPCBObject;
+      continue;
+    end;
+    if ((Prim.ObjectId = ePolyObject)) and
+      ((Prim.Layer <> eTopLayer) and (Prim.Layer <> eBottomLayer)) then
     begin
       Prim := Iter.NextPCBObject;
       continue;
@@ -1067,8 +1096,8 @@ Begin
             Layer := 'TopLayer'
           Else If (Prim.Layer = eBottomLayer) Then
             Layer := 'BottomLayer';
-          Net := '';
-          if Prim.Net<>nil then
+          Net := 'No Net';
+          if Prim.Net <> nil then
             Net := Prim.Net.Name;
 
           EdgeType := 'segment';
@@ -1079,8 +1108,121 @@ Begin
           PnPout.Add('"X1":' + '"' + Preprocess(EdgeX1) + '"' + ',');
           PnPout.Add('"Y1":' + '"' + Preprocess(EdgeY1) + '"' + ',');
           PnPout.Add('"X2":' + '"' + Preprocess(EdgeX2) + '"' + ',');
-          PnPout.Add('"Y2":' + '"' + Preprocess(EdgeY2) + '"'+ ',');
+          PnPout.Add('"Y2":' + '"' + Preprocess(EdgeY2) + '"' + ',');
           PnPout.Add('"Net":' + '"' + Preprocess(Net) + '"');
+          PnPout.Add('}');
+        end;
+      eViaObject:
+        begin
+          // TODO: Layers
+          EdgeWidth := FloatToStr(CoordToMMs(Prim.Size));
+          EdgeX1 := FloatToStr(CoordToMMs(Prim.x - Board.XOrigin));
+          EdgeY1 := FloatToStr(-CoordToMMs(Prim.Y - Board.YOrigin));
+
+          EdgeWidth := StringReplace(EdgeWidth, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeX1 := StringReplace(EdgeX1, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeY1 := StringReplace(EdgeY1, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+
+          If (Prim.Layer = eTopOverlay) Then
+            Layer := 'TopOverlay'
+          Else If (Prim.Layer = eBottomOverlay) Then
+            Layer := 'BottomOverlay'
+          Else If (Prim.Layer = eTopLayer) Then
+            Layer := 'TopLayer'
+          Else If (Prim.Layer = eBottomLayer) Then
+            Layer := 'BottomLayer'
+          Else If (Prim.Layer = eMultiLayer) Then
+            Layer := 'MultiLayer';
+          Net := 'No Net';
+          if Prim.Net <> nil then
+            Net := Prim.Net.Name;
+
+          EdgeType := 'via';
+          PnPout.Add('{');
+          PnPout.Add('"Layer":' + '"' + Preprocess(Layer) + '"' + ',');
+          PnPout.Add('"Type":' + '"' + Preprocess(EdgeType) + '"' + ',');
+          PnPout.Add('"Width":' + '"' + Preprocess(EdgeWidth) + '"' + ',');
+          PnPout.Add('"X":' + '"' + Preprocess(EdgeX1) + '"' + ',');
+          PnPout.Add('"Y":' + '"' + Preprocess(EdgeY1) + '"' + ',');
+          PnPout.Add('"Net":' + '"' + Preprocess(Net) + '"');
+          PnPout.Add('}');
+        end;
+      ePolyObject:
+        begin
+          If (Prim.Layer = eTopOverlay) Then
+            Layer := 'TopOverlay'
+          Else If (Prim.Layer = eBottomOverlay) Then
+            Layer := 'BottomOverlay'
+          Else If (Prim.Layer = eTopLayer) Then
+            Layer := 'TopLayer'
+          Else If (Prim.Layer = eBottomLayer) Then
+            Layer := 'BottomLayer';
+          Net := 'No Net';
+          if Prim.Net <> nil then
+            Net := Prim.Net.Name;
+
+          EdgeType := 'polygon';
+          PnPout.Add('{');
+          PnPout.Add('"Layer":' + '"' + Preprocess(Layer) + '"' + ',');
+          PnPout.Add('"Type":' + '"' + Preprocess(EdgeType) + '"' + ',');
+          PnPout.Add('"Net":' + '"' + Preprocess(Net) + '"' + ',');
+          PnPout.Add('"Points": [');
+          {
+            for k := 0 to Prim.PointCount do
+            begin
+            If (k > 0) Then
+            PnPout.Add(',');
+            EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.Segments[k mod Prim.PointCount].VX - Board.XOrigin));
+            EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.Segments[k mod Prim.PointCount].VY - Board.YOrigin));
+            PnPout.Add('[');
+            PnPout.Add(EdgeX1+',');
+            PnPout.Add(EdgeY1+',');
+            PnPout.Add(']');
+
+            end; }
+          PnPout.Add('],');
+          // PnPout.Add('}');
+
+          k := 0;
+
+          PnPout.Add('"EX": [');
+
+          CI1 := Prim.GroupIterator_Create;
+          // CI1.AddFilter_ObjectSet(MkSet(ePadObject));
+          CO1 := CI1.FirstPCBObject;
+          While (CO1 <> Nil) Do
+          begin
+            if CO1.ObjectId = eRegionObject then
+            begin
+              Inc(k);
+              If (k > 0) Then
+                PnPout.Add(',');
+              PnPout.Add('[');
+              contour := CO1.GetMainContour();
+              for kk := 0 to contour.Count - 1 do
+              begin
+                If (kk > 0) Then
+                  PnPout.Add(',');
+                EdgeX1 := JSONFloatToStr
+                  (CoordToMMs(contour.GetState_PointX(kk) - Board.XOrigin));
+                EdgeY1 := JSONFloatToStr
+                  (-CoordToMMs(contour.GetState_PointY(kk) - Board.YOrigin));
+                PnPout.Add('[');
+                PnPout.Add(EdgeX1 + ',');
+                PnPout.Add(EdgeY1 + ',');
+                PnPout.Add(']');
+              end;
+              PnPout.Add(']');
+            end;
+            CO1 := CI1.NextPCBObject;
+          end;
+          Prim.GroupIterator_Destroy(CI1);
+
+          PnPout.Add(']');
+
           PnPout.Add('}');
         end;
     end;
@@ -1095,11 +1237,12 @@ Begin
   PnPout.Add('"Company":' + '"' + Preprocess('todo1') + '"' + ',');
   PnPout.Add('"Date":' + '"' + Preprocess('todo2') + '"' + ',');
   PnPout.Add('"Revision":' + '"' + Preprocess('todo3') + '"' + ',');
-  PnPout.Add('"Title":' + '"' + Preprocess('todo4') + '"' + ',');
+  PnPout.Add('"Title":' + '"' + Preprocess('todo4') + '"');
 
   PnPout.Add('},');
   PnPout.Add('"Settings":{');
   PnPout.Add('"AddNets":' + JSONBoolToStr(AddNets) + ',');
+  PnPout.Add('"AddTracks":' + JSONBoolToStr(AddTracks));
   PnPout.Add('}');
   PnPout.Add('};');
 
@@ -1226,19 +1369,26 @@ begin
   S.Free;
 
   Data := ReplaceEx(Data, 'CSS', GetWDFileName('web\ibom.css'));
-  Data := ReplaceEx(Data, 'USERCSS', GetWDFileName('web\user-file-examples\user.css'));
+  Data := ReplaceEx(Data, 'USERCSS',
+    GetWDFileName('web\user-file-examples\user.css'));
   Data := ReplaceEx(Data, 'SPLITJS', GetWDFileName('web\split.js'));
   Data := ReplaceEx(Data, 'LZ-STRING', GetWDFileName('web\lz-string.js'));
-  Data := ReplaceEx(Data, 'POINTER_EVENTS_POLYFILL', GetWDFileName('web\pep.js'));
+  Data := ReplaceEx(Data, 'POINTER_EVENTS_POLYFILL',
+    GetWDFileName('web\pep.js'));
   Data := ReplaceEx2(Data, 'CONFIG', config);
-  Data := ReplaceEx2(Data, 'PCBDATA', pcbdata + #13#10 + StringLoadFromFile(GetWDFileName('altium-pcbdata.js')));
+  Data := ReplaceEx2(Data, 'PCBDATA', pcbdata + #13#10 +
+    StringLoadFromFile(GetWDFileName('altium-pcbdata.js')));
   Data := ReplaceEx(Data, 'UTILJS', GetWDFileName('web\util.js'));
   Data := ReplaceEx(Data, 'RENDERJS', GetWDFileName('web\render.js'));
   Data := ReplaceEx(Data, 'TABLEUTILJS', GetWDFileName('web\table-util.js'));
   Data := ReplaceEx(Data, 'IBOMJS', GetWDFileName('web\ibom.js'));
-  Data := ReplaceEx2(Data, 'USERJS', StringLoadFromFile(GetWDFileName('web\user-file-examples\user.js')) + #13#10 + StringLoadFromFile(GetWDFileName('altium-user.js')));
-  Data := ReplaceEx(Data, 'USERHEADER', GetWDFileName('web\user-file-examples\userheader.html'));
-  Data := ReplaceEx(Data, 'USERFOOTER', GetWDFileName('web\user-file-examples\userfooter.html'));
+  Data := ReplaceEx2(Data, 'USERJS',
+    StringLoadFromFile(GetWDFileName('web\user-file-examples\user.js')) + #13#10
+    + StringLoadFromFile(GetWDFileName('altium-user.js')));
+  Data := ReplaceEx(Data, 'USERHEADER',
+    GetWDFileName('web\user-file-examples\userheader.html'));
+  Data := ReplaceEx(Data, 'USERFOOTER',
+    GetWDFileName('web\user-file-examples\userfooter.html'));
 
   S := TStringList.Create;
   S.Text := Data;
@@ -1704,6 +1854,7 @@ Begin
   // FieldSeparatorCb.ItemIndex := FieldSeparatorIndex;
   DarkModeChk.Checked := DarkMode;
   AddNetsChk.Checked := AddNets;
+  AddTracksChk.Checked := AddTracks;
   Highlighting1PinChk.Checked := Highlighting1Pin;
   FabLayerChk.Checked := FabLayer;
   // PluginExecutableEdt.Text := PluginExecutable;
@@ -1711,11 +1862,6 @@ Begin
   {
     ParametersComboBox          .ItemIndex := ParametersComboBox.Items.IndexOf(ParameterName);
     VariantsComboBox            .ItemIndex := VariantsComboBox  .Items.IndexOf(VariantName);
-    UseParametersRadioButton    .Checked   := UseParameters;
-    UseVariantsRadioButton      .Checked   := UseVariants;
-    FullyPopulatedRadioButton   .Checked   := FullyPopulated;
-    CreateAgileBOMCheckBox      .Checked   := CreateAgileBOM;
-    CreateEngineeringBOMCheckBox.Checked   := CreateEngineeringBOM;
   }
 End;
 
@@ -1743,18 +1889,13 @@ Begin
   PluginExecutable := 'gostbomkompas.exe';
   DarkMode := False;
   AddNets := False;
+  AddTracks := False;
   Highlighting1Pin := False;
   FabLayer := False;
   {
     If GetState_Parameter(AParametersList, 'ParameterName'       , S) Then ParameterName        := S;
     If GetState_Parameter(AParametersList, 'VariantName'         , S) Then VariantName          := S;
-    If GetState_Parameter(AParametersList, 'UseParameters'       , S) Then UseParameters        := StringsEqual(S, 'True');
-    If GetState_Parameter(AParametersList, 'UseVariants'         , S) Then UseVariants          := StringsEqual(S, 'True');
-    If GetState_Parameter(AParametersList, 'FullyPopulated'      , S) Then FullyPopulated       := StringsEqual(S, 'True');
-    If GetState_Parameter(AParametersList, 'CreateAgileBOM'      , S) Then CreateAgileBOM       := StringsEqual(S, 'True');
-    If GetState_Parameter(AParametersList, 'CreateEngineeringBOM', S) Then CreateEngineeringBOM := StringsEqual(S, 'True');
-    If GetState_Parameter(AParametersList, 'OpenOutputs'         , S) Then OpenOutputs          := StringsEqual(S, 'True');
-    If GetState_Parameter(AParametersList, 'AddToProject'        , S) Then AddToProject         := StringsEqual(S, 'True'); }
+}
   If GetState_Parameter(AParametersList, 'TargetFileName', S) Then
     TargetFileName := S + '.PrjPcb';
   If GetState_Parameter(AParametersList, 'TargetFolder', S) Then
@@ -1773,6 +1914,8 @@ Begin
     DarkMode := StringsEqual(S, 'True');
   If GetState_Parameter(AParametersList, 'AddNets', S) Then
     AddNets := StringsEqual(S, 'True');
+  If GetState_Parameter(AParametersList, 'AddTracks', S) Then
+    AddTracks := StringsEqual(S, 'True');
   If GetState_Parameter(AParametersList, 'Highlighting1Pin', S) Then
     Highlighting1Pin := StringsEqual(S, 'True');
   If GetState_Parameter(AParametersList, 'FabLayer', S) Then
@@ -1786,16 +1929,13 @@ Begin
   {
     ParameterName         := ParametersComboBox.Items[ ParametersComboBox.ItemIndex ];
     VariantName           := VariantsComboBox  .Items[VariantsComboBox.ItemIndex];
-    UseParameters         := UseParametersRadioButton    .Checked;
-    UseVariants           := UseVariantsRadioButton      .Checked;
-    FullyPopulated        := FullyPopulatedRadioButton   .Checked;
-    CreateAgileBOM        := CreateAgileBOMCheckBox      .Checked;
   }
   LayerFilterIndex := LayerFilterCb.ItemIndex;
   FormatIndex := FormatCb.ItemIndex;
   // FieldSeparatorIndex := FieldSeparatorCb.ItemIndex;
   DarkMode := DarkModeChk.Checked;
   AddNets := AddNetsChk.Checked;
+  AddTracks := AddTracksChk.Checked;
   Highlighting1Pin := Highlighting1PinChk.Checked;
   FabLayer := FabLayerChk.Checked;
   // PluginExecutable := PluginExecutableEdt.Text;
@@ -1809,11 +1949,6 @@ Begin
   Result := '';
   { Result := Result +       'ParameterName='        + ParameterName;
     Result := Result + '|' + 'VariantName='          + VariantName;
-    Result := Result + '|' + 'UseParameters='        + BoolToStr(UseParameters       , True);
-    Result := Result + '|' + 'UseVariants='          + BoolToStr(UseVariants         , True);
-    Result := Result + '|' + 'FullyPopulated='       + BoolToStr(FullyPopulated      , True);
-    Result := Result + '|' + 'CreateAgileBOM='       + BoolToStr(CreateAgileBOM      , True);
-    Result := Result + '|' + 'CreateEngineeringBOM=' + BoolToStr(CreateEngineeringBOM, True);
   }
   Result := Result + '|' + 'LayerFilterIndex=' + IntToStr(LayerFilterIndex);
   Result := Result + '|' + 'FormatIndex=' + IntToStr(FormatIndex);
@@ -1822,6 +1957,7 @@ Begin
   Result := Result + '|' + 'PluginExecutable=' + PluginExecutable;
   Result := Result + '|' + 'DarkMode=' + BoolToStr(DarkMode, True);
   Result := Result + '|' + 'AddNets=' + BoolToStr(AddNets, True);
+  Result := Result + '|' + 'AddTracks=' + BoolToStr(AddTracks, True);
   Result := Result + '|' + 'Highlighting1Pin=' +
     BoolToStr(Highlighting1Pin, True);
   Result := Result + '|' + 'FabLayer=' + BoolToStr(FabLayer, True);

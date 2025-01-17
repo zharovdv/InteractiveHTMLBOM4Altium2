@@ -107,4 +107,12 @@ object MainFrm: TMainFrm
     Caption = 'Add Nets'
     TabOrder = 6
   end
+  object AddTracksChk: TCheckBox
+    Left = 344
+    Top = 32
+    Width = 136
+    Height = 17
+    Caption = 'Add Tracks'
+    TabOrder = 7
+  end
 end
