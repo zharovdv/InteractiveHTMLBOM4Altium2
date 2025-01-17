@@ -1,7 +1,7 @@
 const
-  constKindPcb                  = 'PCB';
+  constKindPcb = 'PCB';
 
-// GLOBAL VARIABLES SECTION
+  // GLOBAL VARIABLES SECTION
 Var
   CurrWorkSpace: IWorkSpace; // An Interface handle to the current workspace
   CurrProject: IProject; // An Interface handle to the current Project
@@ -15,8 +15,13 @@ Var
   TargetPrefix: String;
   // System parameter supplied by OutJob : desired output file name prefix, if any
   LayerFilterIndex: Integer;
+  FormatIndex: Integer;
   FieldSeparatorIndex: Integer;
   PluginExecutable: String;
+  DarkMode: Boolean;
+  AddNets: Boolean;
+  Highlighting1Pin: Boolean;
+  FabLayer: Boolean;
 
 Function GetOutputFileNameWithExtension(Ext: String): String;
 Begin
@@ -29,96 +34,96 @@ Begin
   // CurrString := StringReplace( CurrString, '<DATE>',    DateStr,    MkSet( rfReplaceAll, rfIgnoreCase ) );
 End;
 
-{***************************************************************************
- * function FindProjectPcbDocFile()
- *  Find the PcbDoc file associated with this project.
- *  Panic if we find any number not equal to 1 (eg 0 or 2).
- *
- *  Returns full path to this project's PcbDoc file in var parm pcbDocPath.
- *  Returns:  0 on success, 1 if not successful.
- ***************************************************************************}
-function FindProjectPcbDocFile(    Project               : IProject;
-                                   flagRequirePcbDocFile : Boolean;
-                               var pcbDocPath            : TDynamicString;
-                               )                         : Integer;
+{ ***************************************************************************
+  * function FindProjectPcbDocFile()
+  *  Find the PcbDoc file associated with this project.
+  *  Panic if we find any number not equal to 1 (eg 0 or 2).
+  *
+  *  Returns full path to this project's PcbDoc file in var parm pcbDocPath.
+  *  Returns:  0 on success, 1 if not successful.
+  *************************************************************************** }
+function FindProjectPcbDocFile(Project: IProject;
+  flagRequirePcbDocFile: Boolean; var pcbDocPath: TDynamicString;): Integer;
 var
-   Document   : IDocument;
-   k          : Integer;
-   numPcbDocs : Integer;
+  Document: IDocument;
+  k: Integer;
+  numPcbDocs: Integer;
 
 begin
 
-   { For now, assume/hope/pray that we will succeed. }
-   result := 0;
+  { For now, assume/hope/pray that we will succeed. }
+  Result := 0;
 
-   { Flag that we haven't yet found the PcbDoc file. }
-   pcbDocPath := '';
+  { Flag that we haven't yet found the PcbDoc file. }
+  pcbDocPath := '';
 
-   { Init number of PcbDoc files found to be 0. }
-   numPcbDocs := 0;
+  { Init number of PcbDoc files found to be 0. }
+  numPcbDocs := 0;
 
-   {*** Find name of this project's .PcbDoc file. ***}
-   { Loop over all logical documents in the project.... }
-   for k := 0 to Project.DM_LogicalDocumentCount - 1 do
-   begin
-      Document := Project.DM_LogicalDocuments(k);
+  { *** Find name of this project's .PcbDoc file. *** }
+  { Loop over all logical documents in the project.... }
+  for k := 0 to Project.DM_LogicalDocumentCount - 1 do
+  begin
+    Document := Project.DM_LogicalDocuments(k);
 
-      { See if this document is a PcbDoc file. }
-      if (Document.DM_DocumentKind = constKindPcb) then
-      begin
+    { See if this document is a PcbDoc file. }
+    if (Document.DM_DocumentKind = constKindPcb) then
+    begin
 
-         { Increment number of PcbDoc files that we've found. }
-         numPcbDocs := numPcbDocs + 1;
+      { Increment number of PcbDoc files that we've found. }
+      numPcbDocs := numPcbDocs + 1;
 
-         { Record name of this PcbDoc file to return to caller. }
-         pcbDocPath := Document.DM_FullPath;
-//       ShowMessage('Found PCB document with full path ' + pcbDocPath);
-      end;
+      { Record name of this PcbDoc file to return to caller. }
+      pcbDocPath := Document.DM_FullPath;
+      // ShowMessage('Found PCB document with full path ' + pcbDocPath);
+    end;
 
-   end; { endfor loop over all logical documents in project }
+  end; { endfor loop over all logical documents in project }
 
+  { Make sure there is at least one PcbDoc file. }
+  if (numPcbDocs < 1) then
+  begin
 
-   { Make sure there is at least one PcbDoc file. }
-   if (numPcbDocs < 1) then
-   begin
+    { See if the user has requested operations that require a PcbDoc file. }
+    if (flagRequirePcbDocFile) then
+    begin
+      MyAbort('Found ' + IntToStr(numPcbDocs) +
+        ' PcbDoc files in your project.  This number should have been exactly 1!');
+    end
 
-      { See if the user has requested operations that require a PcbDoc file. }
-      if (flagRequirePcbDocFile) then
-      begin
-         MyAbort('Found ' + IntToStr(numPcbDocs) + ' PcbDoc files in your project.  This number should have been exactly 1!');
-      end
+    { Else just issue a warning. }
+    else
+    begin
+      { Issue warning modal dialog box with specified warning message,
+        no reply after clicking Ok, and specified reply after clicking Cancel. }
+      IssueWarningWithOkOrCancel
+        ('Unable to find a PcbDoc file within this project.' + constLineBreak +
+        'However, since you have not requested operations that require a PcbDoc file, I will proceed to generate other OutJob outputs if you click OK.',
+        '', 'Aborting script at user request due to missing PcbDoc file ' +
+        constPcbVersionParm + '.');
+    end; { endelse }
 
-      { Else just issue a warning. }
-      else
-      begin
-         { Issue warning modal dialog box with specified warning message,
-          no reply after clicking Ok, and specified reply after clicking Cancel. }
-         IssueWarningWithOkOrCancel('Unable to find a PcbDoc file within this project.' + constLineBreak +
-                                    'However, since you have not requested operations that require a PcbDoc file, I will proceed to generate other OutJob outputs if you click OK.',
-                                    '',
-                                    'Aborting script at user request due to missing PcbDoc file ' + constPcbVersionParm + '.');
-      end; { endelse }
+  end; { endif }
 
-   end; { endif }
+  { Make sure there is no more than 1 PcbDoc file. }
+  if (numPcbDocs > 1) then
+  begin
+    MyAbort('Found ' + IntToStr(numPcbDocs) +
+      ' PcbDoc files in your project.  This script currently only supports having 1 PcbDoc file per project!');
+  end;
 
-   { Make sure there is no more than 1 PcbDoc file. }
-   if (numPcbDocs > 1) then
-   begin
-      MyAbort('Found ' + IntToStr(numPcbDocs) + ' PcbDoc files in your project.  This script currently only supports having 1 PcbDoc file per project!');
-   end;
+  // ShowMessage('About to leave FindProjectPcbDocFile(), pcbDocPath is ' + pcbDocPath);
 
-//   ShowMessage('About to leave FindProjectPcbDocFile(), pcbDocPath is ' + pcbDocPath);
+end; { end FindProjectPcbDocFile() }
 
-end; {end FindProjectPcbDocFile() }
-
-Function UseItEx(_CurrComponent,_CurrPart: TString;
+Function UseItEx(_CurrComponent, _CurrPart: TString;
   _ProjectVariant: IProjectVariant): Boolean;
 var
-  //_CurrPart: IPart;
+  // _CurrPart: IPart;
   ComponentVariation: IComponentVariation;
 begin
   // [!!!] UGLY
-  //_CurrPart := _CurrComponent.DM_SubParts[0];
+  // _CurrPart := _CurrComponent.DM_SubParts[0];
   if _ProjectVariant = nil then
   begin
     if pos('@', _CurrComponent) <> 0 then
@@ -166,28 +171,32 @@ begin
   end;
 end;
 
-function GetSeparator:String;
+function GetSeparator: String;
 var
   Separator: TString;
 begin
   case FieldSeparatorIndex of
-    0: Separator := ',';
-    1: Separator := ';';
-    2: Separator := ' ';
-    3: Separator := #9;
-    //else
+    0:
+      Separator := ',';
+    1:
+      Separator := ';';
+    2:
+      Separator := ' ';
+    3:
+      Separator := #9;
+    // else
   end;
 
   Result := Separator;
 end;
 
-function Preprocess(Value:String):String;
+function Preprocess(Value: String): String;
 var
   Separator: TString;
 begin
-  //Separator := GetSeparator();
+  // Separator := GetSeparator();
 
-  //Result := StringReplace(Value, Separator, '', MkSet(rfReplaceAll,rfIgnoreCase));
+  // Result := StringReplace(Value, Separator, '', MkSet(rfReplaceAll,rfIgnoreCase));
   Result := Value;
 end;
 
@@ -201,42 +210,15 @@ Begin
   // CurrString := StringReplace( CurrString, '<DATE>',    DateStr,    MkSet( rfReplaceAll, rfIgnoreCase ) );
 End;
 
-function JSONFloatToStr(v:Single):String;
+function JSONFloatToStr(v: Single): String;
 begin
-  Result := StringReplace(FloatToStr(v), ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
+  Result := StringReplace(FloatToStr(v), ',', '.',
+    MkSet(rfReplaceAll, rfIgnoreCase));
 end;
 
-function PickAndPlaceOutputEx:String;
-var
-    Board                          : IPCB_Board; // document board object
-    Component                      : IPCB_Component; // component object
-    Iterator                       : IPCB_BoardIterator;
-    ComponentIterator              : IPCB_GroupIterator;
-    Pad                            : IPCB_Pad;
-    SMDcomponent                   : Boolean;
-    BoardUnits                     : String;
-                                     // Current unit string mm/mils
-    PnPout                         : TStringList;
-    Count                          : Integer;
-    FileName                       : TString;
-    Document                       : IServerDocument;
-    X, Y, Rotation, Layer          : TString;
-    pcbDocPath: TString;
-    flagRequirePcbDocFile : Boolean;
-    Separator: TString;
-    Iter, Prim: TObject;
-    PadsCount: Integer;
-    PadLayer,PadType:String;
-    PadX, PadY, PadAngle : TString;
-    X1,Y1,X2,Y2,_W,_H: Single;
-    Width, Height :String;
-    PadWidth, PadHeight, PadPin1 :String;
-    PadShape,PadDrillShape:String;
-    PadDrillWidth,PadDrillHeight:String;
-    EdgeType:String;
-    EdgeWidth,EdgeHeight,EdgeX1,EdgeY1,EdgeX2,EdgeY2,EdgeRadius: String;
-Begin
-   // Make sure the current Workspace opens or else quit this script
+function GetCompFromComp(pcbc:IPCB_Component):IComponent;
+begin
+  // Make sure the current Workspace opens or else quit this script
   CurrWorkSpace := GetWorkSpace;
   If (CurrWorkSpace = Nil) Then
     Exit;
@@ -247,323 +229,540 @@ Begin
   If CurrProject = Nil Then
     Exit;
 
-   flagRequirePcbDocFile := true;
+  Result := nil;
+end;
 
-   FindProjectPcbDocFile(CurrProject,
-                         flagRequirePcbDocFile,
-                         {var} pcbDocPath);
+function GetFlatDoc:IDocument;
+Begin
+  FlattenedDoc := CurrProject.DM_DocumentFlattened;
 
-   ResetParameters;
-   AddStringParameter('ObjectKind', 'Document');
-   AddStringParameter('FileName', pcbDocPath);
-   RunProcess('WorkspaceManager:OpenObject');
-   Board := PCBServer.GetCurrentPCBBoard;
-// Board := PCBServer.GetPCBBoardByPath('d:\home\gandalf\src\alt\ya-regul\main');
- //Board := PCBServer.GetPCBBoardByPath('d:\home\gandalf\src\alt\ya-regul\main.PcbDoc');
+  If (FlattenedDoc = Nil) Then
+  Begin
+    // First try compiling the project
+    AddStringParameter('Action', 'Compile');
+    AddStringParameter('ObjectKind', 'Project');
+    RunProcess('WorkspaceManager:Compile');
 
-    If Not Assigned(Board) Then  // check of active document
-       Begin
-          ShowMessage('The Current Document is not a PCB Document.');
-       Exit;
-    End;
+    // Try Again to open the flattened document
+    FlattenedDoc := CurrProject.DM_DocumentFlattened;
+  End;
 
+  Result := FlattenedDoc;
+end;
 
-    Iterator := Board.BoardIterator_Create;
-    Iterator.AddFilter_ObjectSet(MkSet(eComponentObject));
-    Iterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
-    Iterator.AddFilter_Method(eProcessAll);
+procedure ListAllFields(Dummy: Integer);
+Var
+  CompIndex: Integer; // An Index for pullin out components
+  PhysCompCount: Integer; // A count of the number of components in document
+  PhysComponent: IComponent; // An Interface handle to the current Component
+  PhysCompIndex: Integer; // An index for pulling out Physical Parts
+  CurrPart: IPart; // An Interface handle to the current Part of a Component
+  CurrSortStr: String; // A String to hold the sorting field
+  CurrPhysDesStr: String; // A String to hold the current Physical Designator
+  CurrFootprintStr: String; // A String to hold the current Footprint
+  CurrDescrStr: String; // A String to hold the current Description
+  CurrLibRefStr: String; // A String to hold the current Library Reference
+  CurrStuffedStr: String;
 
-    Separator := GetSeparator();
-    Count := 0;
-    PnPout   := TStringList.Create;
-    Component := Iterator.FirstPCBObject;
+  // Flag for processing the rest of the designator characters
+  SortIndex: Integer; // Temporary Index for chars in the Designator
+  CompCount: Integer; // The Number of Components Flattened Document
+  CompListIndex: Integer; // An index for strings in CompList
+  i: Integer;
+  _n: IParameter;
+  _nn: string;
+  _vv: string;
+  _ss: TStringList;
+  _pp: TStringList;
+  ParmIndex: Integer;
+  ParmCount: Integer; // The Number of Parameters in Component
+  CurrParm: IParameter; // An interface handle to a Parameter
+  iii: Integer;
+  Line: String;
+  ComponentVariation: IComponentVariation;
 
-    //PnPout.Add('Designator'  + #9 + 'Footprint' + #9 + 'Xref' + #9 + 'Yref'  + #9 + 'Rotation' + #9 + 'Layer' + #9 + 'Description');
-    //PnPout.Add('Designator'  + Separator + 'Comment'  + Separator + 'Layer'  + Separator + 'Part Number'  + Separator + 'Footprint'  + Separator + 'Center-X(mm)'  + Separator + 'Center-Y(mm)'  + Separator + 'Rotation'  + Separator + 'Description'  + Separator + 'Mounting_Type');
-    //PnPout.Add('Designator'  + #9 + 'Footprint' + #9 + 'Xref' + #9 + 'Yref'  + #9 + 'Rotation' + #9 + 'Layer' + #9 + 'Description');
+Begin
+  FlattenedDoc := GetFlatDoc;
 
-    PnPout.Add('var altiumbom = {');
-    PnPout.Add('"Data":[');
+  CompCount := FlattenedDoc.DM_ComponentCount;
 
-
-    While (Component <> Nil) Do
+  _pp := TStringList.Create;
+  _pp.Sorted := True;
+  _pp.Duplicates := dupIgnore;
+  For CompIndex := 0 To CompCount - 1 Do
+  Begin
+    CurrComponent := FlattenedDoc.DM_Components[CompIndex];
+    ParmCount := CurrComponent.DM_ParameterCount;
+    For ParmIndex := 0 To ParmCount - 1 Do
     Begin
-        // Test if the component is SMD (all pads without hole)
-        ComponentIterator := Component.GroupIterator_Create;
-        ComponentIterator.AddFilter_ObjectSet(MkSet(ePadObject));
-        Pad := ComponentIterator.FirstPCBObject;
-        While (Pad <> Nil) Do
-        Begin
-          //
-            SMDcomponent := True;
-            If Pad.Layer = eMultiLayer Then
-               Begin
-                    SMDcomponent := False;
-                    Break;
-               End;
-            Pad := ComponentIterator.NextPCBObject;
-        End;
-        // Print Pick&Place data of SMD components to file
-        if UseItEx(Component.SourceUniqueId, Component.SourceDesignator, ProjectVariant) then
-        //if (LayerFilterIndex=0) or ((LayerFilterCb=1) and (Component.Layer = eTopLayer)) or ((LayerFilterCb=2) and (Component.Layer = eBottomLayer)) then
-        //If (SMDcomponent = True) Then
-           Begin
-                Inc(Count);
-                If (Count>1) Then
-                  PnPout.Add(',');
-                If (Component.Layer = eTopLayer) Then
-                    Layer := 'TopLayer'
-                Else
-                    Layer := 'BottomLayer';
-                X := FloatToStr(CoordToMMs(Component.X - Board.XOrigin));
-                Y := FloatToStr(-CoordToMMs(Component.Y - Board.YOrigin));
-                Rotation := IntToStr(Component.Rotation);
-                    //Component.Component.
-                    //Designator,Comment,Layer,Part Number,Center-X(mm),Center-Y(mm),Rotation,Description,Mounting_Type
-                //PnPout.Add(Component.SourceDesignator  + #9 + Component.SourceLibReference + #9 + X + #9 + Y  + #9 + Rotation + #9 + Layer + #9 + Component.FootprintDescription+#9+Component.SourceUniqueId+#9+Component.Pattern+#9+Component.SourceFootprintLibrary+#9+Component.SourceLibReference);
-                //PnPout.Add(Preprocess(Component.SourceDesignator)  + Separator + Preprocess('Comment') + Separator + Preprocess(Layer) + Separator + Preprocess(Component.SourceLibReference)  + Separator + Preprocess(Component.Pattern) + Separator + Preprocess(X) + Separator + Preprocess(Y) + Separator + Preprocess(Rotation) + Separator + Preprocess('Description') + Separator + Preprocess('SMD'));
+      CurrParm := CurrComponent.DM_Parameters(ParmIndex);
+      _pp.Add(CurrParm.DM_Name);
+    End;
+  end;
+  _pp.Free;
+end;
 
-                X := StringReplace(X, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-                Y := StringReplace(Y, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
+function GetCompFromCompEx(pcbc:IPCB_Component):IComponent;
+Var
+  CompIndex: Integer; // An Index for pullin out components
+  PhysCompCount: Integer; // A count of the number of components in document
+  PhysComponent: IComponent; // An Interface handle to the current Component
+  PhysCompIndex: Integer; // An index for pulling out Physical Parts
+  CurrPart: IPart; // An Interface handle to the current Part of a Component
+  CurrSortStr: String; // A String to hold the sorting field
+  CurrPhysDesStr: String; // A String to hold the current Physical Designator
+  CurrFootprintStr: String; // A String to hold the current Footprint
+  CurrDescrStr: String; // A String to hold the current Description
+  CurrLibRefStr: String; // A String to hold the current Library Reference
+  CurrStuffedStr: String;
 
-                //TODO: Is it correct? X1,Y1 vs X,Y
-                X1 :=CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Left- Board.XOrigin);
-                Y1 :=CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Bottom- Board.YOrigin);
-                X2 :=CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Right- Board.XOrigin);
-                Y2 :=CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Top- Board.YOrigin);
+  // Flag for processing the rest of the designator characters
+  SortIndex: Integer; // Temporary Index for chars in the Designator
+  CompCount: Integer; // The Number of Components Flattened Document
+  CompListIndex: Integer; // An index for strings in CompList
+  i: Integer;
+  _n: IParameter;
+  _nn: string;
+  _vv: string;
+  _ss: TStringList;
+  _pp: TStringList;
+  ParmIndex: Integer;
+  ParmCount: Integer; // The Number of Parameters in Component
+  CurrParm: IParameter; // An interface handle to a Parameter
+  iii: Integer;
+  Line: String;
+  ComponentVariation: IComponentVariation;
 
-                Width := FloatToStr(X2-X1);
-                Height := FloatToStr(Y2-Y1);
+Begin
+  FlattenedDoc := GetFlatDoc;
 
-                Width := StringReplace(Width, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-                Height := StringReplace(Height, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
+  CompCount := FlattenedDoc.DM_ComponentCount;
 
-                X := StringReplace(FloatToStr(X1), ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-                Y := StringReplace(FloatToStr(-Y2), ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
+  //Component.SourceUniqueId, Component.SourceDesignator
 
+  For CompIndex := 0 To CompCount - 1 Do
+  Begin
+    CurrComponent := FlattenedDoc.DM_Components[CompIndex];
+    if CurrComponent.DM_UniqueId=pcbc.SourceUniqueId then
+    begin
+      Result := CurrComponent;
+      exit;
+    end;
+  end;
+end;
 
-                {
-        bbox['pos'] :=[x0.round(), -y1.round()]; //
-        bbox['relpos'] :=[0, 0];
-        bbox['angle'] :=0;
-        bbox['size'] :=[(x1 - x0).round(), (y1 - y0).round()];
-        bbox['center'] :=[(x0 + bbox.size[0] / 2).round(), -(y0 + bbox.size[1] / 2).round()];
+function JSONBoolToStr(v: Boolean): String;
+begin
+  if v then
+    Result := 'true'
+  else
+    Result := 'false';
+end;
+
+function PickAndPlaceOutputEx: String;
+var
+  Board: IPCB_Board; // document board object
+  Component: IPCB_Component; // component object
+  Iterator: IPCB_BoardIterator;
+  ComponentIterator: IPCB_GroupIterator;
+  Pad: IPCB_Pad;
+  SMDcomponent: Boolean;
+  BoardUnits: String;
+  // Current unit string mm/mils
+  PnPout: TStringList;
+  Count: Integer;
+  FileName: TString;
+  Document: IServerDocument;
+  X, Y, Rotation, Layer, Net: TString;
+  pcbDocPath: TString;
+  flagRequirePcbDocFile: Boolean;
+  Separator: TString;
+  Iter, Prim: TObject;
+  PadsCount: Integer;
+  PadLayer, PadType: String;
+  PadX, PadY, PadAngle: TString;
+  X1, Y1, X2, Y2, _W, _H: Single;
+  Width, Height: String;
+  PadWidth, PadHeight, PadPin1: String;
+  PadShape, PadDrillShape: String;
+  PadDrillWidth, PadDrillHeight: String;
+  EdgeType: String;
+  EdgeWidth, EdgeHeight, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
+  ccc: IComponent;
+  xxx: String;
+  CurrParm: IParameter;
+  NoBOM: Boolean;
+Begin
+  // Make sure the current Workspace opens or else quit this script
+  CurrWorkSpace := GetWorkSpace;
+  If (CurrWorkSpace = Nil) Then
+    Exit;
+
+  // Make sure the currently focussed Project in this Workspace opens or else
+  // quit this script
+  CurrProject := CurrWorkSpace.DM_FocusedProject;
+  If CurrProject = Nil Then
+    Exit;
+
+  flagRequirePcbDocFile := True;
+
+  FindProjectPcbDocFile(CurrProject, flagRequirePcbDocFile,
+    { var } pcbDocPath);
+
+  ResetParameters;
+  AddStringParameter('ObjectKind', 'Document');
+  AddStringParameter('FileName', pcbDocPath);
+  RunProcess('WorkspaceManager:OpenObject');
+  Board := PCBServer.GetCurrentPCBBoard;
+  // Board := PCBServer.GetPCBBoardByPath('d:\home\gandalf\src\alt\ya-regul\main');
+  // Board := PCBServer.GetPCBBoardByPath('d:\home\gandalf\src\alt\ya-regul\main.PcbDoc');
+
+  If Not Assigned(Board) Then // check of active document
+  Begin
+    ShowMessage('The Current Document is not a PCB Document.');
+    Exit;
+  End;
+
+  Iterator := Board.BoardIterator_Create;
+  Iterator.AddFilter_ObjectSet(MkSet(eComponentObject));
+  Iterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
+  Iterator.AddFilter_Method(eProcessAll);
+
+  Separator := GetSeparator();
+  Count := 0;
+  PnPout := TStringList.Create;
+  Component := Iterator.FirstPCBObject;
+
+  // PnPout.Add('Designator'  + #9 + 'Footprint' + #9 + 'Xref' + #9 + 'Yref'  + #9 + 'Rotation' + #9 + 'Layer' + #9 + 'Description');
+  // PnPout.Add('Designator'  + Separator + 'Comment'  + Separator + 'Layer'  + Separator + 'Part Number'  + Separator + 'Footprint'  + Separator + 'Center-X(mm)'  + Separator + 'Center-Y(mm)'  + Separator + 'Rotation'  + Separator + 'Description'  + Separator + 'Mounting_Type');
+  // PnPout.Add('Designator'  + #9 + 'Footprint' + #9 + 'Xref' + #9 + 'Yref'  + #9 + 'Rotation' + #9 + 'Layer' + #9 + 'Description');
+
+  PnPout.Add('var altiumbom = {');
+  PnPout.Add('"Data":[');
+
+  While (Component <> Nil) Do
+  Begin
+    //ccc := CurrProject.FindComponent(Component.Designator);
+    //ccc := Component.GetComponent;
+    //xxx := ccc.DM_GetParameterByName('Component Kind');
+    //ShowMessage(xxx);
+
+    NoBOM := False;
+    ccc := GetCompFromCompEx(Component);
+    CurrParm := ccc.DM_GetParameterByName('Component Kind');
+    //(CurrParm <> nil) and
+    if (CurrParm.DM_Value = 'Standard (No BOM)') then
+    begin
+      NoBOM := True;
+    end;
+
+    // Test if the component is SMD (all pads without hole)
+    ComponentIterator := Component.GroupIterator_Create;
+    ComponentIterator.AddFilter_ObjectSet(MkSet(ePadObject));
+    Pad := ComponentIterator.FirstPCBObject;
+    While (Pad <> Nil) Do
+    Begin
+      //
+      SMDcomponent := True;
+      If Pad.Layer = eMultiLayer Then
+      Begin
+        SMDcomponent := False;
+        Break;
+      End;
+      Pad := ComponentIterator.NextPCBObject;
+    End;
+    // Print Pick&Place data of SMD components to file
+    if UseItEx(Component.SourceUniqueId, Component.SourceDesignator,
+      ProjectVariant) then
+      if (LayerFilterIndex = 0) or
+        ((LayerFilterCb = 1) and (Component.Layer = eTopLayer)) or
+        ((LayerFilterCb = 2) and (Component.Layer = eBottomLayer)) then
+      // If (SMDcomponent = True) Then
+      Begin
+        Inc(Count);
+        If (Count > 1) Then
+          PnPout.Add(',');
+        If (Component.Layer = eTopLayer) Then
+          Layer := 'TopLayer'
+        Else
+          Layer := 'BottomLayer';
+        X := FloatToStr(CoordToMMs(Component.X - Board.XOrigin));
+        Y := FloatToStr(-CoordToMMs(Component.Y - Board.YOrigin));
+        Rotation := IntToStr(Component.Rotation);
+        // Component.Component.
+        // Designator,Comment,Layer,Part Number,Center-X(mm),Center-Y(mm),Rotation,Description,Mounting_Type
+        // PnPout.Add(Component.SourceDesignator  + #9 + Component.SourceLibReference + #9 + X + #9 + Y  + #9 + Rotation + #9 + Layer + #9 + Component.FootprintDescription+#9+Component.SourceUniqueId+#9+Component.Pattern+#9+Component.SourceFootprintLibrary+#9+Component.SourceLibReference);
+        // PnPout.Add(Preprocess(Component.SourceDesignator)  + Separator + Preprocess('Comment') + Separator + Preprocess(Layer) + Separator + Preprocess(Component.SourceLibReference)  + Separator + Preprocess(Component.Pattern) + Separator + Preprocess(X) + Separator + Preprocess(Y) + Separator + Preprocess(Rotation) + Separator + Preprocess('Description') + Separator + Preprocess('SMD'));
+
+        X := StringReplace(X, ',', '.', MkSet(rfReplaceAll, rfIgnoreCase));
+        Y := StringReplace(Y, ',', '.', MkSet(rfReplaceAll, rfIgnoreCase));
+
+        // TODO: Is it correct? X1,Y1 vs X,Y
+        X1 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Left
+          - Board.XOrigin);
+        Y1 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.
+          Bottom - Board.YOrigin);
+        X2 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.
+          Right - Board.XOrigin);
+        Y2 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Top
+          - Board.YOrigin);
+
+        Width := FloatToStr(X2 - X1);
+        Height := FloatToStr(Y2 - Y1);
+
+        Width := StringReplace(Width, ',', '.',
+          MkSet(rfReplaceAll, rfIgnoreCase));
+        Height := StringReplace(Height, ',', '.',
+          MkSet(rfReplaceAll, rfIgnoreCase));
+
+        X := StringReplace(FloatToStr(X1), ',', '.',
+          MkSet(rfReplaceAll, rfIgnoreCase));
+        Y := StringReplace(FloatToStr(-Y2), ',', '.',
+          MkSet(rfReplaceAll, rfIgnoreCase));
+
+        {
+          bbox['pos'] :=[x0.round(), -y1.round()]; //
+          bbox['relpos'] :=[0, 0];
+          bbox['angle'] :=0;
+          bbox['size'] :=[(x1 - x0).round(), (y1 - y0).round()];
+          bbox['center'] :=[(x0 + bbox.size[0] / 2).round(), -(y0 + bbox.size[1] / 2).round()];
         }
 
-                PnPout.Add('{');
+        PnPout.Add('{');
 
-                PnPout.Add('"Designator":'+'"'+Preprocess(Component.SourceDesignator)+'"'+',');
-                PnPout.Add('"Layer":'+'"'+Preprocess(Layer)+'"'+',');
-                PnPout.Add('"Footprint":'+'"'+Preprocess(Component.Pattern)+'"'+',');
-                PnPout.Add('"PartNumber":'+'"'+Preprocess(Component.SourceLibReference)+'"'+',');
-                PnPout.Add('"X":'+'"'+Preprocess(X)+'"'+',');
-                PnPout.Add('"Y":'+'"'+Preprocess(Y)+'"'+',');
-                PnPout.Add('"Width":'+'"'+Preprocess(Width)+'"'+',');
-                PnPout.Add('"Height":'+'"'+Preprocess(Height)+'"'+',');
+        PnPout.Add('"Designator":' + '"' +
+          Preprocess(Component.SourceDesignator) + '"' + ',');
+        PnPout.Add('"Layer":' + '"' + Preprocess(Layer) + '"' + ',');
+        PnPout.Add('"Footprint":' + '"' + Preprocess(Component.Pattern) +
+          '"' + ',');
+        PnPout.Add('"PartNumber":' + '"' +
+          Preprocess(Component.SourceLibReference) + '"' + ',');
+        PnPout.Add('"X":' + '"' + Preprocess(X) + '"' + ',');
+        PnPout.Add('"Y":' + '"' + Preprocess(Y) + '"' + ',');
+        PnPout.Add('"Width":' + '"' + Preprocess(Width) + '"' + ',');
+        PnPout.Add('"Height":' + '"' + Preprocess(Height) + '"' + ',');
+        PnPout.Add('"NoBOM":' + JSONBoolToStr(NoBOM) + ',');
 
-                PnPout.Add('"Pads":'+'[');
+        PnPout.Add('"Pads":' + '[');
 
-                PadsCount := 0;
-                Iter :=Component.GroupIterator_Create;
-                Iter.AddFilter_ObjectSet(MkSet(ePadObject));
-                Iter.AddFilter_LayerSet(AllLayers);
-                Prim :=Iter.FirstPCBObject;
-                while (Prim <> nil) do begin
-                Pad := Prim;
-                Inc(PadsCount);
-                If (PadsCount>1) Then
-                  PnPout.Add(',');
-                PnPout.Add('{');
+        PadsCount := 0;
+        Iter := Component.GroupIterator_Create;
+        Iter.AddFilter_ObjectSet(MkSet(ePadObject));
+        Iter.AddFilter_LayerSet(AllLayers);
+        Prim := Iter.FirstPCBObject;
+        while (Prim <> nil) do
+        begin
+          Pad := Prim;
+          Inc(PadsCount);
+          If (PadsCount > 1) Then
+            PnPout.Add(',');
+          PnPout.Add('{');
 
-                //TODO: Not sure
-                PadType := Pad.Layer;
-                if (Pad.Layer = eTopLayer) then
-                begin
-                  PadLayer := 'TopLayer';
-                  PadType := 'smd';
-                  PadWidth := FloatToStr(CoordToMMs(Pad.TopXSize));
-                  PadHeight := FloatToStr(CoordToMMs(Pad.TopYSize));
+          // TODO: Not sure
+          PadType := Pad.Layer;
+          if (Pad.Layer = eTopLayer) then
+          begin
+            PadLayer := 'TopLayer';
+            PadType := 'smd';
+            PadWidth := FloatToStr(CoordToMMs(Pad.TopXSize));
+            PadHeight := FloatToStr(CoordToMMs(Pad.TopYSize));
 
-                  PadShape :='circle';
-                  case (Pad.TopShape) of
-                    1:
-                    begin
-                    if PadWidth=PadHeight then
-                    PadShape :='circle'
-                    else
-                    PadShape :='oval';
-                    //(res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
-                    end;
-                    2:PadShape :='rect';
-                    //3:PadShape :='chamfrect';
-                    9:PadShape :='roundrect';
-//                default:
-                    //res['shape'] :='custom';
-                  end;
-                end
-                else
-                if (Pad.Layer = eBottomLayer) then
+            PadShape := 'circle';
+            case (Pad.TopShape) of
+              1:
                 begin
-                  PadLayer := 'BottomLayer';
-                  PadType := 'smd';
-                  PadWidth := FloatToStr(CoordToMMs(Prim.BotXSize));
-                  PadHeight := FloatToStr(CoordToMMs(Prim.BotYSize));
-                  PadShape :='circle';
-                  case (Pad.BotShape) of
-                    1:
-                    begin
-                    if PadWidth=PadHeight then
-                    PadShape :='circle'
-                    else
-                    PadShape :='oval';
-                    //(res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
-                    end;
-                    2:PadShape :='rect';
-                    //3:PadShape :='chamfrect';
-                    9:PadShape :='roundrect';
-//                default:
-                    //res['shape'] :='custom';
-                  end;
-                end
-                else
-                begin
-                  PadLayer := 'MultiLayer';
-                  PadType := 'th';
-                  PadWidth := FloatToStr(CoordToMMs(Prim.TopXSize));
-                  PadHeight := FloatToStr(CoordToMMs(Prim.TopYSize));
-                  //TODO: Is it norm?
-                  PadShape :='circle';
-                  case (Pad.TopShape) of
-                    1: begin
-                    if PadWidth=PadHeight then
-                    PadShape :='circle'
-                    else
-                    PadShape :='oval';
-                    //(res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
-                    end;
-                    //3:PadShape :='chamfrect';
-                    9:PadShape :='roundrect';
-//                default:
-                    //res['shape'] :='custom';
-                  end;
-                  case (Pad.BotShape) of
-                    1:begin
-                                        if PadWidth=PadHeight then
-                    PadShape :='circle'
-                    else
-                    PadShape :='oval';
-                    //(res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
-                    end;
-                    2:PadShape :='rect';
-                    //3:PadShape :='chamfrect';
-                    9:PadShape :='roundrect';
-//                default:
-                    //res['shape'] :='custom';
-                  end;
-
-                  case (Pad.HoleType) of
-                0: // circle
-                begin
-                    //res["drillsize"] = [CoordToMMs(Prim.HoleSize).round(), CoordToMMs(Prim.HoleSize).round()];
-                    PadDrillShape := 'circle';
-                    PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
-                    PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
-                    end;
-                1: // square, but not supported in kicad, so do as circle
-                begin
-                    //res["drillsize"] = [CoordToMMs(Prim.HoleSize).round(), CoordToMMs(Prim.HoleSize).round()];
-                    PadDrillShape := 'circle';
-                    PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
-                    PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
-                    end;
-                2: // slot
-                begin
-                    //res["drillsize"] = [CoordToMMs(Prim.HoleWidth).round(), CoordToMMs(Prim.HoleSize).round()];
-                    PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleWidth));
-                    PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
-                    PadDrillShape := 'oblong';
-                    end;
-                //default:  //
+                  if PadWidth = PadHeight then
+                    PadShape := 'circle'
+                  else
+                    PadShape := 'oval';
+                  // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
                 end;
-
-                end;
-
-                PadPin1 := '0';
-                if (Pad.Name = '1') then
-                //if ("A1".indexOf(Pad.Name) != -1) then
+              2:
+                PadShape := 'rect';
+              // 3:PadShape :='chamfrect';
+              9:
+                PadShape := 'roundrect';
+              // default:
+              // res['shape'] :='custom';
+            end;
+          end
+          else if (Pad.Layer = eBottomLayer) then
+          begin
+            PadLayer := 'BottomLayer';
+            PadType := 'smd';
+            PadWidth := FloatToStr(CoordToMMs(Prim.BotXSize));
+            PadHeight := FloatToStr(CoordToMMs(Prim.BotYSize));
+            PadShape := 'circle';
+            case (Pad.BotShape) of
+              1:
                 begin
-                  PadPin1 := '1';
+                  if PadWidth = PadHeight then
+                    PadShape := 'circle'
+                  else
+                    PadShape := 'oval';
+                  // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
                 end;
-
-                PadWidth := StringReplace(PadWidth, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-                PadHeight := StringReplace(PadHeight, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-
-                PadX := FloatToStr(CoordToMMs(Pad.X - Board.XOrigin));
-                PadY := FloatToStr(-CoordToMMs(Pad.Y - Board.YOrigin));
-
-                PadX := StringReplace(PadX, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-                PadY := StringReplace(PadY, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-
-                PadAngle := FloatToStr(Pad.Rotation);
-                PadAngle := StringReplace(PadAngle, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-
-                PnPout.Add('"Layer":'+'"'+Preprocess(PadLayer)+'"'+',');
-                PnPout.Add('"Type":'+'"'+Preprocess(PadType)+'"'+',');
-                PnPout.Add('"Shape":'+'"'+Preprocess(PadShape)+'"'+',');
-                if PadType='th' then
+              2:
+                PadShape := 'rect';
+              // 3:PadShape :='chamfrect';
+              9:
+                PadShape := 'roundrect';
+              // default:
+              // res['shape'] :='custom';
+            end;
+          end
+          else
+          begin
+            PadLayer := 'MultiLayer';
+            PadType := 'th';
+            PadWidth := FloatToStr(CoordToMMs(Prim.TopXSize));
+            PadHeight := FloatToStr(CoordToMMs(Prim.TopYSize));
+            // TODO: Is it norm?
+            PadShape := 'circle';
+            case (Pad.TopShape) of
+              1:
                 begin
-                PnPout.Add('"DrillShape":'+'"'+Preprocess(PadDrillShape)+'"'+',');
-                PnPout.Add('"DrillWidth":'+'"'+Preprocess(PadDrillWidth)+'"'+',');
-                PnPout.Add('"DrillHeight":'+'"'+Preprocess(PadDrillHeight)+'"'+',');
+                  if PadWidth = PadHeight then
+                    PadShape := 'circle'
+                  else
+                    PadShape := 'oval';
+                  // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
                 end;
-               // PnPout.Add('"Debug":'+'"'+Preprocess(Prim.Layer)+'"'+',');
-                PnPout.Add('"X":'+'"'+Preprocess(PadX)+'"'+',');
-                PnPout.Add('"Y":'+'"'+Preprocess(PadY)+'"'+',');
-                PnPout.Add('"Width":'+'"'+Preprocess(PadWidth)+'"'+',');
-                PnPout.Add('"Height":'+'"'+Preprocess(PadHeight)+'"'+',');
-                PnPout.Add('"Angle":'+'"'+Preprocess(PadAngle)+'"'+',');
-                PnPout.Add('"Pin1":'+'"'+Preprocess(PadPin1)+'"');
-
-                PnPout.Add('}');
-                //pads :=pads.concat(parsePad(Prim));
-                //if (isSMD and (Prim.Layer = eMultiLayer)) then begin
-                //isSMD :=false;
-                //end;
-                Prim :=Iter.NextPCBObject;
+              // 3:PadShape :='chamfrect';
+              9:
+                PadShape := 'roundrect';
+              // default:
+              // res['shape'] :='custom';
+            end;
+            case (Pad.BotShape) of
+              1:
+                begin
+                  if PadWidth = PadHeight then
+                    PadShape := 'circle'
+                  else
+                    PadShape := 'oval';
+                  // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
                 end;
-                Component.GroupIterator_Destroy(Iter);
+              2:
+                PadShape := 'rect';
+              // 3:PadShape :='chamfrect';
+              9:
+                PadShape := 'roundrect';
+              // default:
+              // res['shape'] :='custom';
+            end;
 
-                PnPout.Add(']');
+            case (Pad.HoleType) of
+              0: // circle
+                begin
+                  // res["drillsize"] = [CoordToMMs(Prim.HoleSize).round(), CoordToMMs(Prim.HoleSize).round()];
+                  PadDrillShape := 'circle';
+                  PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+                  PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+                end;
+              1: // square, but not supported in kicad, so do as circle
+                begin
+                  // res["drillsize"] = [CoordToMMs(Prim.HoleSize).round(), CoordToMMs(Prim.HoleSize).round()];
+                  PadDrillShape := 'rect';
+                  PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleWidth));
+                  PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+                end;
+              2: // slot
+                begin
+                  // res["drillsize"] = [CoordToMMs(Prim.HoleWidth).round(), CoordToMMs(Prim.HoleSize).round()];
+                  PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleWidth));
+                  PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+                  PadDrillShape := 'oblong';
+                end;
+              // default:  //
+            end;
 
-                PnPout.Add('}');
-           End;
-        Component := Iterator.NextPCBObject;
-    End;
-    Board.BoardIterator_Destroy(Iterator);
+          end;
 
-    PnPout.Add('],');
-    PnPout.Add('"Board":[');
+          PadPin1 := '0';
+          if (Pad.Name = '1') then
+          // if ("A1".indexOf(Pad.Name) != -1) then
+          begin
+            PadPin1 := '1';
+          end;
 
-    Count := 0;
+          PadWidth := StringReplace(PadWidth, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          PadHeight := StringReplace(PadHeight, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
 
-    Iter :=Board.BoardIterator_Create;
-    //Iter.AddFilter_ObjectSet(eTrackObject);
-    Iter.AddFilter_LayerSet(MkSet(eKeepOutLayer));
-    Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject));
-    //Iter.AddFilter_ObjectSet(MkSet(eTrackObject));
-    {Iter.AddFilter_LayerSet(MkSet(pcb.Layers.OUTLINE_LAYER));}
-    Iter.AddFilter_Method(eProcessAll);
-    Prim :=Iter.FirstPCBObject;
-    while (Prim <> nil) do
-    begin
-      Inc(Count);
-      If (Count>1) Then
-        PnPout.Add(',');
+          PadX := FloatToStr(CoordToMMs(Pad.X - Board.XOrigin));
+          PadY := FloatToStr(-CoordToMMs(Pad.Y - Board.YOrigin));
 
-      case (Prim.ObjectId) of
-         eArcObject:
-         begin
-                 //   ;{edges.push(parseArc(Prim));}
+          PadX := StringReplace(PadX, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          PadY := StringReplace(PadY, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+
+          PadAngle := FloatToStr(Pad.Rotation);
+          PadAngle := StringReplace(PadAngle, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+
+          PnPout.Add('"Layer":' + '"' + Preprocess(PadLayer) + '"' + ',');
+          PnPout.Add('"Type":' + '"' + Preprocess(PadType) + '"' + ',');
+          PnPout.Add('"Shape":' + '"' + Preprocess(PadShape) + '"' + ',');
+          if PadType = 'th' then
+          begin
+            PnPout.Add('"DrillShape":' + '"' + Preprocess(PadDrillShape) +
+              '"' + ',');
+            PnPout.Add('"DrillWidth":' + '"' + Preprocess(PadDrillWidth) +
+              '"' + ',');
+            PnPout.Add('"DrillHeight":' + '"' + Preprocess(PadDrillHeight) +
+              '"' + ',');
+          end;
+          // PnPout.Add('"Debug":'+'"'+Preprocess(Prim.Layer)+'"'+',');
+          PnPout.Add('"X":' + '"' + Preprocess(PadX) + '"' + ',');
+          PnPout.Add('"Y":' + '"' + Preprocess(PadY) + '"' + ',');
+          PnPout.Add('"Width":' + '"' + Preprocess(PadWidth) + '"' + ',');
+          PnPout.Add('"Height":' + '"' + Preprocess(PadHeight) + '"' + ',');
+          PnPout.Add('"Angle":' + '"' + Preprocess(PadAngle) + '"' + ',');
+          PnPout.Add('"Pin1":' + '"' + Preprocess(PadPin1) + '"');
+
+          PnPout.Add('}');
+          // pads :=pads.concat(parsePad(Prim));
+          // if (isSMD and (Prim.Layer = eMultiLayer)) then begin
+          // isSMD :=false;
+          // end;
+          Prim := Iter.NextPCBObject;
+        end;
+        Component.GroupIterator_Destroy(Iter);
+
+        PnPout.Add(']');
+
+        PnPout.Add('}');
+      End;
+    Component := Iterator.NextPCBObject;
+  End;
+  Board.BoardIterator_Destroy(Iterator);
+
+  PnPout.Add('],');
+  PnPout.Add('"Board":[');
+
+  Count := 0;
+
+  Iter := Board.BoardIterator_Create;
+  // Iter.AddFilter_ObjectSet(eTrackObject);
+  Iter.AddFilter_LayerSet(MkSet(eKeepOutLayer));
+  Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject));
+  // Iter.AddFilter_ObjectSet(MkSet(eTrackObject));
+  { Iter.AddFilter_LayerSet(MkSet(pcb.Layers.OUTLINE_LAYER)); }
+  Iter.AddFilter_Method(eProcessAll);
+  Prim := Iter.FirstPCBObject;
+  while (Prim <> nil) do
+  begin
+    Inc(Count);
+    If (Count > 1) Then
+      PnPout.Add(',');
+
+    case (Prim.ObjectId) of
+      eArcObject:
+        begin
+          // ;{edges.push(parseArc(Prim));}
           EdgeWidth := FloatToStr(CoordToMMs(Prim.LineWidth));
           EdgeX1 := FloatToStr(CoordToMMs(Prim.XCenter - Board.XOrigin));
           EdgeY1 := FloatToStr(-CoordToMMs(Prim.YCenter - Board.YOrigin));
@@ -571,39 +770,45 @@ Begin
           EdgeY2 := FloatToStr(-Prim.StartAngle);
           EdgeRadius := FloatToStr(CoordToMMs(Prim.Radius));
 
-          EdgeWidth := StringReplace(EdgeWidth, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeX1 := StringReplace(EdgeX1, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeY1 := StringReplace(EdgeY1, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeX2 := StringReplace(EdgeX2, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeY2 := StringReplace(EdgeY2, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeRadius := StringReplace(EdgeRadius, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
+          EdgeWidth := StringReplace(EdgeWidth, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeX1 := StringReplace(EdgeX1, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeY1 := StringReplace(EdgeY1, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeX2 := StringReplace(EdgeX2, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeY2 := StringReplace(EdgeY2, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeRadius := StringReplace(EdgeRadius, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
 
-           EdgeType := 'arc';
-           PnPout.Add('{');
-           PnPout.Add('"Type":'+'"'+Preprocess(EdgeType)+'"'+',');
-           PnPout.Add('"Width":'+'"'+Preprocess(EdgeWidth)+'"'+',');
-           PnPout.Add('"X":'+'"'+Preprocess(EdgeX1)+'"'+',');
-           PnPout.Add('"Y":'+'"'+Preprocess(EdgeY1)+'"'+',');
-           PnPout.Add('"Angle1":'+'"'+Preprocess(EdgeX2)+'"'+',');
-           PnPout.Add('"Angle2":'+'"'+Preprocess(EdgeY2)+'"'+',');
-           PnPout.Add('"Radius":'+'"'+Preprocess(EdgeRadius)+'"');
-           PnPout.Add('}');
-         end;
-         eTrackObject:
-         begin
-                 //  JSONPush(edges,parseTrack(Prim));
-                         {
-var start = [CoordToMMs(Prim.x1).round(), -CoordToMMs(Prim.y1).round()];
-        var end = [CoordToMMs(Prim.x2).round(), -CoordToMMs(Prim.y2).round()];
-        res["layer"] = Prim.Layer;
-        if (Prim.InPolygon)
+          EdgeType := 'arc';
+          PnPout.Add('{');
+          PnPout.Add('"Type":' + '"' + Preprocess(EdgeType) + '"' + ',');
+          PnPout.Add('"Width":' + '"' + Preprocess(EdgeWidth) + '"' + ',');
+          PnPout.Add('"X":' + '"' + Preprocess(EdgeX1) + '"' + ',');
+          PnPout.Add('"Y":' + '"' + Preprocess(EdgeY1) + '"' + ',');
+          PnPout.Add('"Angle1":' + '"' + Preprocess(EdgeX2) + '"' + ',');
+          PnPout.Add('"Angle2":' + '"' + Preprocess(EdgeY2) + '"' + ',');
+          PnPout.Add('"Radius":' + '"' + Preprocess(EdgeRadius) + '"');
+          PnPout.Add('}');
+        end;
+      eTrackObject:
+        begin
+          // JSONPush(edges,parseTrack(Prim));
+          {
+            var start = [CoordToMMs(Prim.x1).round(), -CoordToMMs(Prim.y1).round()];
+            var end = [CoordToMMs(Prim.x2).round(), -CoordToMMs(Prim.y2).round()];
+            res["layer"] = Prim.Layer;
+            if (Prim.InPolygon)
             res["type"] = "polygon";
             res["svgpath"] = ["M", start, "L", end].join(" ");
-     else             res["type"] = "segment";
+            else             res["type"] = "segment";
             res["start"] = start;
             res["end"] = end;
             res["width"] = CoordToMMs(Prim.Width).round();
-                        }
+          }
 
           EdgeWidth := FloatToStr(CoordToMMs(Prim.Width));
           EdgeX1 := FloatToStr(CoordToMMs(Prim.X1 - Board.XOrigin));
@@ -611,151 +816,174 @@ var start = [CoordToMMs(Prim.x1).round(), -CoordToMMs(Prim.y1).round()];
           EdgeX2 := FloatToStr(CoordToMMs(Prim.X2 - Board.XOrigin));
           EdgeY2 := FloatToStr(-CoordToMMs(Prim.Y2 - Board.YOrigin));
 
-          EdgeWidth := StringReplace(EdgeWidth, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeX1 := StringReplace(EdgeX1, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeY1 := StringReplace(EdgeY1, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeX2 := StringReplace(EdgeX2, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeY2 := StringReplace(EdgeY2, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
+          EdgeWidth := StringReplace(EdgeWidth, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeX1 := StringReplace(EdgeX1, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeY1 := StringReplace(EdgeY1, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeX2 := StringReplace(EdgeX2, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeY2 := StringReplace(EdgeY2, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
 
-           EdgeType := 'segment';
-           PnPout.Add('{');
-           PnPout.Add('"Type":'+'"'+Preprocess(EdgeType)+'"'+',');
-           PnPout.Add('"Width":'+'"'+Preprocess(EdgeWidth)+'"'+',');
-           PnPout.Add('"X1":'+'"'+Preprocess(EdgeX1)+'"'+',');
-           PnPout.Add('"Y1":'+'"'+Preprocess(EdgeY1)+'"'+',');
-           PnPout.Add('"X2":'+'"'+Preprocess(EdgeX2)+'"'+',');
-           PnPout.Add('"Y2":'+'"'+Preprocess(EdgeY2)+'"');
+          EdgeType := 'segment';
+          PnPout.Add('{');
+          PnPout.Add('"Type":' + '"' + Preprocess(EdgeType) + '"' + ',');
+          PnPout.Add('"Width":' + '"' + Preprocess(EdgeWidth) + '"' + ',');
+          PnPout.Add('"X1":' + '"' + Preprocess(EdgeX1) + '"' + ',');
+          PnPout.Add('"Y1":' + '"' + Preprocess(EdgeY1) + '"' + ',');
+          PnPout.Add('"X2":' + '"' + Preprocess(EdgeX2) + '"' + ',');
+          PnPout.Add('"Y2":' + '"' + Preprocess(EdgeY2) + '"');
 
-           PnPout.Add('}');
-         end;
-      end;
-
-      Prim :=Iter.NextPCBObject;
+          PnPout.Add('}');
+        end;
     end;
-    Board.BoardIterator_Destroy(Iter);
 
-    PnPout.Add('],');
-    PnPout.Add('"BB":{');
+    Prim := Iter.NextPCBObject;
+  end;
+  Board.BoardIterator_Destroy(Iter);
 
-//            var bbox = {};
-//        bbox["minx"] = CoordToMMs(Board.BoardOutline.BoundingRectangle.Left).round();
-//        bbox["miny"] = -CoordToMMs(pcb.board.BoardOutline.BoundingRectangle.Top).round();
-//        bbox["maxx"] = CoordToMMs(pcb.board.BoardOutline.BoundingRectangle.Right).round();
-//        bbox["maxy"] = -CoordToMMs(pcb.board.BoardOutline.BoundingRectangle.Bottom).round();
+  PnPout.Add('],');
+  PnPout.Add('"BB":{');
 
-    EdgeX1 := FloatToStr(CoordToMMs(Board.BoardOutline.BoundingRectangle.Left- Board.XOrigin));
-    EdgeY1 := FloatToStr(-CoordToMMs(Board.BoardOutline.BoundingRectangle.Top- Board.YOrigin));
-    EdgeX2 := FloatToStr(CoordToMMs(Board.BoardOutline.BoundingRectangle.Right- Board.XOrigin));
-    EdgeY2 := FloatToStr(-CoordToMMs(Board.BoardOutline.BoundingRectangle.Bottom- Board.YOrigin));
+  // var bbox = {};
+  // bbox["minx"] = CoordToMMs(Board.BoardOutline.BoundingRectangle.Left).round();
+  // bbox["miny"] = -CoordToMMs(pcb.board.BoardOutline.BoundingRectangle.Top).round();
+  // bbox["maxx"] = CoordToMMs(pcb.board.BoardOutline.BoundingRectangle.Right).round();
+  // bbox["maxy"] = -CoordToMMs(pcb.board.BoardOutline.BoundingRectangle.Bottom).round();
 
-    EdgeX1 := StringReplace(EdgeX1, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-    EdgeY1 := StringReplace(EdgeY1, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-    EdgeX2 := StringReplace(EdgeX2, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-    EdgeY2 := StringReplace(EdgeY2, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
+  EdgeX1 := FloatToStr(CoordToMMs(Board.BoardOutline.BoundingRectangle.Left -
+    Board.XOrigin));
+  EdgeY1 := FloatToStr(-CoordToMMs(Board.BoardOutline.BoundingRectangle.Top -
+    Board.YOrigin));
+  EdgeX2 := FloatToStr(CoordToMMs(Board.BoardOutline.BoundingRectangle.Right -
+    Board.XOrigin));
+  EdgeY2 := FloatToStr(-CoordToMMs(Board.BoardOutline.BoundingRectangle.Bottom -
+    Board.YOrigin));
 
-    PnPout.Add('"X1":'+'"'+Preprocess(EdgeX1)+'"'+',');
-    PnPout.Add('"Y1":'+'"'+Preprocess(EdgeY1)+'"'+',');
-    PnPout.Add('"X2":'+'"'+Preprocess(EdgeX2)+'"'+',');
-    PnPout.Add('"Y2":'+'"'+Preprocess(EdgeY2)+'"');
+  EdgeX1 := StringReplace(EdgeX1, ',', '.', MkSet(rfReplaceAll, rfIgnoreCase));
+  EdgeY1 := StringReplace(EdgeY1, ',', '.', MkSet(rfReplaceAll, rfIgnoreCase));
+  EdgeX2 := StringReplace(EdgeX2, ',', '.', MkSet(rfReplaceAll, rfIgnoreCase));
+  EdgeY2 := StringReplace(EdgeY2, ',', '.', MkSet(rfReplaceAll, rfIgnoreCase));
 
-    PnPout.Add('},');
-    PnPout.Add('"Extra":[');
+  PnPout.Add('"X1":' + '"' + Preprocess(EdgeX1) + '"' + ',');
+  PnPout.Add('"Y1":' + '"' + Preprocess(EdgeY1) + '"' + ',');
+  PnPout.Add('"X2":' + '"' + Preprocess(EdgeX2) + '"' + ',');
+  PnPout.Add('"Y2":' + '"' + Preprocess(EdgeY2) + '"');
 
-    Count := 0;
+  PnPout.Add('},');
+  PnPout.Add('"Extra":[');
 
-    Iter :=Board.BoardIterator_Create;
-    //Iter.AddFilter_ObjectSet(eTrackObject);
-    Iter.AddFilter_LayerSet(MkSet(eTopOverlay,eBottomOverlay));
-    Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject, eTextObject));
-    //Iter.AddFilter_ObjectSet(MkSet(eTrackObject));
-    {Iter.AddFilter_LayerSet(MkSet(pcb.Layers.OUTLINE_LAYER));}
-    Iter.AddFilter_Method(eProcessAll);
-    Prim :=Iter.FirstPCBObject;
-    while (Prim <> nil) do
+  Count := 0;
+
+  Iter := Board.BoardIterator_Create;
+  // Iter.AddFilter_ObjectSet(eTrackObject);
+  Iter.AddFilter_LayerSet(MkSet(eTopOverlay, eBottomOverlay, eTopLayer, eBottomLayer));
+  Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject, eTextObject));
+  // Iter.AddFilter_ObjectSet(MkSet(eTrackObject));
+  { Iter.AddFilter_LayerSet(MkSet(pcb.Layers.OUTLINE_LAYER)); }
+  Iter.AddFilter_Method(eProcessAll);
+  Prim := Iter.FirstPCBObject;
+  while (Prim <> nil) do
+  begin
+    // TODO: UGLY
+    if (Prim.ObjectId = eTextObject) and (Prim.IsHidden) then
     begin
-    //TODO: UGLY
-      if (Prim.ObjectId=eTextObject) and (Prim.IsHidden) then
-      begin
-        Prim :=Iter.NextPCBObject;
-        continue;
-      end;
+      Prim := Iter.NextPCBObject;
+      continue;
+    end;
+    if ((Prim.Layer = eTopLayer) or (Prim.Layer = eBottomLayer)) and (Prim.ObjectId <> eTrackObject) then
+    begin
+      Prim := Iter.NextPCBObject;
+      continue;
+    end;
 
-      Inc(Count);
-      If (Count>1) Then
-        PnPout.Add(',');
+    Inc(Count);
+    If (Count > 1) Then
+      PnPout.Add(',');
 
-      case (Prim.ObjectId) of
-          eTextObject:
-          begin
-            If (Prim.Layer = eTopOverlay) Then
+    case (Prim.ObjectId) of
+      eTextObject:
+        begin
+          If (Prim.Layer = eTopOverlay) Then
             Layer := 'TopOverlay'
           Else If (Prim.Layer = eBottomOverlay) Then
-            Layer := 'BottomOverlay';
+            Layer := 'BottomOverlay'
+          Else If (Prim.Layer = eTopLayer) Then
+            Layer := 'TopLayer'
+          Else If (Prim.Layer = eBottomLayer) Then
+            Layer := 'BottomLayer';
 
-          //                  X1 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Left- Board.XOrigin);
-          //      Y1 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Bottom- Board.YOrigin);
-          //      X2 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Right- Board.XOrigin);
-          //      Y2 :=CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Top- Board.YOrigin);
+          // X1 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Left- Board.XOrigin);
+          // Y1 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Bottom- Board.YOrigin);
+          // X2 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Right- Board.XOrigin);
+          // Y2 :=CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Top- Board.YOrigin);
 
-        //var x0, y0, x1, y1;
-        X1 := CoordToMMs(Prim.BoundingRectangleForSelection.Left- Board.XOrigin);
-        Y1 := CoordToMMs(Prim.BoundingRectangleForSelection.Bottom- Board.YOrigin);
-        X2 := CoordToMMs(Prim.BoundingRectangleForSelection.Right- Board.XOrigin);
-        Y2 := CoordToMMs(Prim.BoundingRectangleForSelection.Top- Board.YOrigin);
+          // var x0, y0, x1, y1;
+          X1 := CoordToMMs(Prim.BoundingRectangleForSelection.Left -
+            Board.XOrigin);
+          Y1 := CoordToMMs(Prim.BoundingRectangleForSelection.Bottom -
+            Board.YOrigin);
+          X2 := CoordToMMs(Prim.BoundingRectangleForSelection.Right -
+            Board.XOrigin);
+          Y2 := CoordToMMs(Prim.BoundingRectangleForSelection.Top -
+            Board.YOrigin);
 
-        _W := X2 - X1;
-        _H := Y2 - Y1;
+          _W := X2 - X1;
+          _H := Y2 - Y1;
 
-        EdgeX1 := JSONFloatToStr(X1+_W/2);
-        EdgeY1 := JSONFloatToStr(-(Y1+_H/2));
+          EdgeX1 := JSONFloatToStr(X1 + _W / 2);
+          EdgeY1 := JSONFloatToStr(-(Y1 + _H / 2));
 
-        //bbox["size"] = [(x1 - x0).round(), (y1 - y0).round()];
+          // bbox["size"] = [(x1 - x0).round(), (y1 - y0).round()];
 
-        //bbox["center"] = [(x0 + bbox.size[0] / 2).round(), -(y0 + bbox.size[1] / 2).round()];
+          // bbox["center"] = [(x0 + bbox.size[0] / 2).round(), -(y0 + bbox.size[1] / 2).round()];
 
-        EdgeX2 := JSONFloatToStr(Prim.Rotation);
+          EdgeX2 := JSONFloatToStr(Prim.Rotation);
 
-          EdgeRadius :='0';
+          EdgeRadius := '0';
           if (Prim.MirrorFlag) then
-          EdgeRadius := '1';
+            EdgeRadius := '1';
 
-
-         if (Prim.TextKind = 0) then begin
-         //   res["thickness"] = CoordToMMs(Prim.Width).round();
+          if (Prim.TextKind = 0) then
+          begin
+            // res["thickness"] = CoordToMMs(Prim.Width).round();
             EdgeHeight := JSONFloatToStr(CoordToMMs(Prim.Size));
             EdgeWidth := EdgeHeight; // single char's width in kicad
-        end else if (Prim.TextKind = 1) then begin
+          end
+          else if (Prim.TextKind = 1) then
+          begin
             EdgeHeight := JSONFloatToStr(CoordToMMs(Prim.TTFTextHeight * 0.6));
-            EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.TTFTextWidth * 0.9 / Length(Prim.Text)));
-           // res["thickness"] = CoordToMMs(res["height"] * 0.1);
-        end;
-
-
-           EdgeType := 'text';
-           PnPout.Add('{');
-           PnPout.Add('"Layer":'+'"'+Preprocess(Layer)+'"'+',');
-           PnPout.Add('"Type":'+'"'+Preprocess(EdgeType)+'"'+',');
-           //PnPout.Add('"Width":'+'"'+Preprocess(EdgeWidth)+'"'+',');
-           PnPout.Add('"X":'+'"'+Preprocess(EdgeX1)+'"'+',');
-           PnPout.Add('"Y":'+'"'+Preprocess(EdgeY1)+'"'+',');
-           PnPout.Add('"Width":'+'"'+Preprocess(EdgeWidth)+'"'+',');
-           PnPout.Add('"Height":'+'"'+Preprocess(EdgeHeight)+'"'+',');
-           PnPout.Add('"Angle":'+'"'+Preprocess(EdgeX2)+'"'+',');
-           //PnPout.Add('"Angle2":'+'"'+Preprocess(EdgeY2)+'"'+',');
-           PnPout.Add('"Mirrored":'+'"'+Preprocess(EdgeRadius)+'"'+',');
-           PnPout.Add('"Text":'+'"'+Preprocess(Prim.Text)+'"');
-           PnPout.Add('}');
+            EdgeWidth := JSONFloatToStr
+              (CoordToMMs(Prim.TTFTextWidth * 0.9 / Length(Prim.Text)));
+            // res["thickness"] = CoordToMMs(res["height"] * 0.1);
           end;
-         eArcObject:
+
+          EdgeType := 'text';
+          PnPout.Add('{');
+          PnPout.Add('"Layer":' + '"' + Preprocess(Layer) + '"' + ',');
+          PnPout.Add('"Type":' + '"' + Preprocess(EdgeType) + '"' + ',');
+          // PnPout.Add('"Width":'+'"'+Preprocess(EdgeWidth)+'"'+',');
+          PnPout.Add('"X":' + '"' + Preprocess(EdgeX1) + '"' + ',');
+          PnPout.Add('"Y":' + '"' + Preprocess(EdgeY1) + '"' + ',');
+          PnPout.Add('"Width":' + '"' + Preprocess(EdgeWidth) + '"' + ',');
+          PnPout.Add('"Height":' + '"' + Preprocess(EdgeHeight) + '"' + ',');
+          PnPout.Add('"Angle":' + '"' + Preprocess(EdgeX2) + '"' + ',');
+          // PnPout.Add('"Angle2":'+'"'+Preprocess(EdgeY2)+'"'+',');
+          PnPout.Add('"Mirrored":' + '"' + Preprocess(EdgeRadius) + '"' + ',');
+          PnPout.Add('"Text":' + '"' + Preprocess(Prim.Text) + '"');
+          PnPout.Add('}');
+        end;
+      eArcObject:
         begin
-                 //   ;{edges.push(parseArc(Prim));}
+          // ;{edges.push(parseArc(Prim));}
 
-              //               res["type"] = "arc";
-            //res["width"] = width;
-            //res["startangle"] = -Prim.EndAngle.round();
-            //res["endangle"] = -Prim.StartAngle.round();
-            //res["start"] = [CoordToMMs(Prim.XCenter).round(), -CoordToMMs(Prim.YCenter).round()];
-
+          // res["type"] = "arc";
+          // res["width"] = width;
+          // res["startangle"] = -Prim.EndAngle.round();
+          // res["endangle"] = -Prim.StartAngle.round();
+          // res["start"] = [CoordToMMs(Prim.XCenter).round(), -CoordToMMs(Prim.YCenter).round()];
 
           EdgeWidth := FloatToStr(CoordToMMs(Prim.LineWidth));
           EdgeX1 := FloatToStr(CoordToMMs(Prim.XCenter - Board.XOrigin));
@@ -764,45 +992,55 @@ var start = [CoordToMMs(Prim.x1).round(), -CoordToMMs(Prim.y1).round()];
           EdgeY2 := FloatToStr(-Prim.StartAngle);
           EdgeRadius := FloatToStr(CoordToMMs(Prim.Radius));
 
-          EdgeWidth := StringReplace(EdgeWidth, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeX1 := StringReplace(EdgeX1, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeY1 := StringReplace(EdgeY1, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeX2 := StringReplace(EdgeX2, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeY2 := StringReplace(EdgeY2, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeRadius := StringReplace(EdgeRadius, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
+          EdgeWidth := StringReplace(EdgeWidth, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeX1 := StringReplace(EdgeX1, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeY1 := StringReplace(EdgeY1, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeX2 := StringReplace(EdgeX2, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeY2 := StringReplace(EdgeY2, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeRadius := StringReplace(EdgeRadius, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
 
           If (Prim.Layer = eTopOverlay) Then
             Layer := 'TopOverlay'
           Else If (Prim.Layer = eBottomOverlay) Then
-            Layer := 'BottomOverlay';
+            Layer := 'BottomOverlay'
+          Else If (Prim.Layer = eTopLayer) Then
+            Layer := 'TopLayer'
+          Else If (Prim.Layer = eBottomLayer) Then
+            Layer := 'BottomLayer';
 
-           EdgeType := 'arc';
-           PnPout.Add('{');
-           PnPout.Add('"Layer":'+'"'+Preprocess(Layer)+'"'+',');
-           PnPout.Add('"Type":'+'"'+Preprocess(EdgeType)+'"'+',');
-           PnPout.Add('"Width":'+'"'+Preprocess(EdgeWidth)+'"'+',');
-           PnPout.Add('"X":'+'"'+Preprocess(EdgeX1)+'"'+',');
-           PnPout.Add('"Y":'+'"'+Preprocess(EdgeY1)+'"'+',');
-           PnPout.Add('"Angle1":'+'"'+Preprocess(EdgeX2)+'"'+',');
-           PnPout.Add('"Angle2":'+'"'+Preprocess(EdgeY2)+'"'+',');
-           PnPout.Add('"Radius":'+'"'+Preprocess(EdgeRadius)+'"');
-           PnPout.Add('}');
-         end;
-         eTrackObject:
-         begin
-                 //  JSONPush(edges,parseTrack(Prim));
-                         {
-var start = [CoordToMMs(Prim.x1).round(), -CoordToMMs(Prim.y1).round()];
-        var end = [CoordToMMs(Prim.x2).round(), -CoordToMMs(Prim.y2).round()];
-        res["layer"] = Prim.Layer;
-        if (Prim.InPolygon)
+          EdgeType := 'arc';
+          PnPout.Add('{');
+          PnPout.Add('"Layer":' + '"' + Preprocess(Layer) + '"' + ',');
+          PnPout.Add('"Type":' + '"' + Preprocess(EdgeType) + '"' + ',');
+          PnPout.Add('"Width":' + '"' + Preprocess(EdgeWidth) + '"' + ',');
+          PnPout.Add('"X":' + '"' + Preprocess(EdgeX1) + '"' + ',');
+          PnPout.Add('"Y":' + '"' + Preprocess(EdgeY1) + '"' + ',');
+          PnPout.Add('"Angle1":' + '"' + Preprocess(EdgeX2) + '"' + ',');
+          PnPout.Add('"Angle2":' + '"' + Preprocess(EdgeY2) + '"' + ',');
+          PnPout.Add('"Radius":' + '"' + Preprocess(EdgeRadius) + '"');
+          PnPout.Add('}');
+        end;
+      eTrackObject:
+        begin
+          // JSONPush(edges,parseTrack(Prim));
+          {
+            var start = [CoordToMMs(Prim.x1).round(), -CoordToMMs(Prim.y1).round()];
+            var end = [CoordToMMs(Prim.x2).round(), -CoordToMMs(Prim.y2).round()];
+            res["layer"] = Prim.Layer;
+            if (Prim.InPolygon)
             res["type"] = "polygon";
             res["svgpath"] = ["M", start, "L", end].join(" ");
-     else             res["type"] = "segment";
+            else             res["type"] = "segment";
             res["start"] = start;
             res["end"] = end;
             res["width"] = CoordToMMs(Prim.Width).round();
-                        }
+          }
 
           EdgeWidth := FloatToStr(CoordToMMs(Prim.Width));
           EdgeX1 := FloatToStr(CoordToMMs(Prim.X1 - Board.XOrigin));
@@ -810,93 +1048,108 @@ var start = [CoordToMMs(Prim.x1).round(), -CoordToMMs(Prim.y1).round()];
           EdgeX2 := FloatToStr(CoordToMMs(Prim.X2 - Board.XOrigin));
           EdgeY2 := FloatToStr(-CoordToMMs(Prim.Y2 - Board.YOrigin));
 
-          EdgeWidth := StringReplace(EdgeWidth, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeX1 := StringReplace(EdgeX1, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeY1 := StringReplace(EdgeY1, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeX2 := StringReplace(EdgeX2, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
-          EdgeY2 := StringReplace(EdgeY2, ',', '.', MkSet(rfReplaceAll,rfIgnoreCase));
+          EdgeWidth := StringReplace(EdgeWidth, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeX1 := StringReplace(EdgeX1, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeY1 := StringReplace(EdgeY1, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeX2 := StringReplace(EdgeX2, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
+          EdgeY2 := StringReplace(EdgeY2, ',', '.',
+            MkSet(rfReplaceAll, rfIgnoreCase));
 
           If (Prim.Layer = eTopOverlay) Then
             Layer := 'TopOverlay'
           Else If (Prim.Layer = eBottomOverlay) Then
-            Layer := 'BottomOverlay';
+            Layer := 'BottomOverlay'
+          Else If (Prim.Layer = eTopLayer) Then
+            Layer := 'TopLayer'
+          Else If (Prim.Layer = eBottomLayer) Then
+            Layer := 'BottomLayer';
+          Net := '';
+          if Prim.Net<>nil then
+            Net := Prim.Net.Name;
 
-           EdgeType := 'segment';
-           PnPout.Add('{');
-           PnPout.Add('"Layer":'+'"'+Preprocess(Layer)+'"'+',');
-           PnPout.Add('"Type":'+'"'+Preprocess(EdgeType)+'"'+',');
-           PnPout.Add('"Width":'+'"'+Preprocess(EdgeWidth)+'"'+',');
-           PnPout.Add('"X1":'+'"'+Preprocess(EdgeX1)+'"'+',');
-           PnPout.Add('"Y1":'+'"'+Preprocess(EdgeY1)+'"'+',');
-           PnPout.Add('"X2":'+'"'+Preprocess(EdgeX2)+'"'+',');
-           PnPout.Add('"Y2":'+'"'+Preprocess(EdgeY2)+'"');
-           PnPout.Add('}');
-         end;
-      end;
-
-      Prim :=Iter.NextPCBObject;
+          EdgeType := 'segment';
+          PnPout.Add('{');
+          PnPout.Add('"Layer":' + '"' + Preprocess(Layer) + '"' + ',');
+          PnPout.Add('"Type":' + '"' + Preprocess(EdgeType) + '"' + ',');
+          PnPout.Add('"Width":' + '"' + Preprocess(EdgeWidth) + '"' + ',');
+          PnPout.Add('"X1":' + '"' + Preprocess(EdgeX1) + '"' + ',');
+          PnPout.Add('"Y1":' + '"' + Preprocess(EdgeY1) + '"' + ',');
+          PnPout.Add('"X2":' + '"' + Preprocess(EdgeX2) + '"' + ',');
+          PnPout.Add('"Y2":' + '"' + Preprocess(EdgeY2) + '"'+ ',');
+          PnPout.Add('"Net":' + '"' + Preprocess(Net) + '"');
+          PnPout.Add('}');
+        end;
     end;
-    Board.BoardIterator_Destroy(Iter);
 
-    PnPout.Add('],');
-    PnPout.Add('"Metadata":{');
+    Prim := Iter.NextPCBObject;
+  end;
+  Board.BoardIterator_Destroy(Iter);
 
-    PnPout.Add('"Company":'+'"'+Preprocess('todo1')+'"'+',');
-    PnPout.Add('"Date":'+'"'+Preprocess('todo2')+'"'+',');
-    PnPout.Add('"Revision":'+'"'+Preprocess('todo3')+'"'+',');
-    PnPout.Add('"Title":'+'"'+Preprocess('todo4')+'"'+',');
+  PnPout.Add('],');
+  PnPout.Add('"Metadata":{');
 
-    PnPout.Add('}');
-    PnPout.Add('};');
+  PnPout.Add('"Company":' + '"' + Preprocess('todo1') + '"' + ',');
+  PnPout.Add('"Date":' + '"' + Preprocess('todo2') + '"' + ',');
+  PnPout.Add('"Revision":' + '"' + Preprocess('todo3') + '"' + ',');
+  PnPout.Add('"Title":' + '"' + Preprocess('todo4') + '"' + ',');
 
-    // Display the Pick&Place report
-    //FileName := ChangeFileExt(Board.FileName,'.pic');
-    //PnPout.SaveToFile(GetOutputFileNameWithExtension('.js'));
-    //PnPout.SaveToFile(LALALALA('pcbdata.js'));
-    //PnPout.SaveToFile(Filename);
-    Result := PnPout.Text;
+  PnPout.Add('},');
+  PnPout.Add('"Settings":{');
+  PnPout.Add('"AddNets":' + JSONBoolToStr(AddNets) + ',');
+  PnPout.Add('}');
+  PnPout.Add('};');
 
-    PnPout.Free;
+  // Display the Pick&Place report
+  // FileName := ChangeFileExt(Board.FileName,'.pic');
+  // PnPout.SaveToFile(GetOutputFileNameWithExtension('.js'));
+  // PnPout.SaveToFile(LALALALA('pcbdata.js'));
+  // PnPout.SaveToFile(Filename);
+  Result := PnPout.Text;
 
+  PnPout.Free;
 
-
-    {
+  {
     Document  := Client.OpenDocument('Text', FileName);
     If Document <> Nil Then
-        Client.ShowDocument(Document);
+    Client.ShowDocument(Document);
 
     ShowMessage(IntToStr(Count) + ' were exported to Pick and Place file:' + #13 + Board.FileName + '.pic');
-    }
+  }
 End;
 
 function GenerConf(): String;
 var
-    PnPout                         : TStringList;
+  PnPout: TStringList;
 Begin
-    PnPout   := TStringList.Create;
+  PnPout := TStringList.Create;
 
-    PnPout.Add('var config = {');
-    PnPout.Add('"show_fabrication":'+'"'+Preprocess('false')+'"'+',');
-    PnPout.Add('"redraw_on_drag":'+'"'+Preprocess('true')+'"'+',');
-    PnPout.Add('"highlight_pin1":'+'"'+Preprocess('none')+'"'+',');
-    PnPout.Add('"offset_back_rotation":'+'"'+Preprocess('false')+'"'+',');
-    PnPout.Add('"kicad_text_formatting":'+'"'+Preprocess('true')+'"'+',');
-    PnPout.Add('"dark_mode":'+'"'+Preprocess('false')+'"'+',');
-    PnPout.Add('"bom_view":'+'"'+Preprocess('left-right')+'"'+',');
-    PnPout.Add('"board_rotation":'+'"'+Preprocess('0.0')+'"'+',');
-    PnPout.Add('"checkboxes":'+'"'+Preprocess('Sourced,Placed')+'"'+',');
-    PnPout.Add('"show_silkscreen":'+'"'+Preprocess('true')+'"'+',');
-    PnPout.Add('"fields":'+''+Preprocess('["Value", "Footprint"]')+''+',');
-    PnPout.Add('"show_pads":'+'"'+Preprocess('true')+'"'+',');
-    PnPout.Add('"layer_view":'+'"'+Preprocess('FB')+'"'+',');
-    PnPout.Add('};');
+  PnPout.Add('var config = {');
+  PnPout.Add('"show_fabrication":' + JSONBoolToStr(FabLayer) + ',');
+  PnPout.Add('"redraw_on_drag":' + '"' + Preprocess('true') + '"' + ',');
+  PnPout.Add('"highlight_pin1":' + JSONBoolToStr(Highlighting1Pin) + ',');
+  PnPout.Add('"offset_back_rotation":' + '"' + Preprocess('false') + '"' + ',');
+  PnPout.Add('"kicad_text_formatting":' + '"' + Preprocess('true') + '"' + ',');
+  PnPout.Add('"dark_mode":' + JSONBoolToStr(DarkMode) + ',');
+  PnPout.Add('"bom_view":' + '"' + Preprocess('left-right') + '"' + ',');
+  PnPout.Add('"board_rotation":' + '"' + Preprocess('0.0') + '"' + ',');
+  PnPout.Add('"checkboxes":' + '"' + Preprocess('Sourced,Placed') + '"' + ',');
+  PnPout.Add('"show_silkscreen":' + '"' + Preprocess('true') + '"' + ',');
+  PnPout.Add('"fields":' + '' + Preprocess('["Value", "Footprint"]') +
+    '' + ',');
+  PnPout.Add('"show_pads":' + '"' + Preprocess('true') + '"' + ',');
+  PnPout.Add('"layer_view":' + '"' + Preprocess('FB') + '"' + ',');
+  PnPout.Add('};');
 
-    Result := PnPout.Text;
+  Result := PnPout.Text;
 
-    PnPout.Free;
+  PnPout.Free;
 end;
 
-function GetWDFileName(FF:String): String;
+function GetWDFileName(FF: String): String;
 var
   i: Integer;
   Path: String;
@@ -928,39 +1181,41 @@ begin
   end;
 end;
 
-function StringLoadFromFile(Filename:String):String;
+function StringLoadFromFile(FileName: String): String;
 var
   S: TStringList;
 begin
   S := TStringList.Create;
-  S.LoadFromFile(Filename);
+  S.LoadFromFile(FileName);
   Result := S.Text;
   S.Free;
 end;
 
-function ReplaceEx(a,c,Filename:String):String;
+function ReplaceEx(a, c, FileName: String): String;
 var
   S: TStringList;
   e: String;
-  i:Integer;
+  i: Integer;
 begin
   S := TStringList.Create;
-  S.LoadFromFile(Filename);
+  S.LoadFromFile(FileName);
   e := S.Text;
   S.Free;
 
-  Result := StringReplace(a, '///'+c+'///', e, MkSet(rfReplaceAll,rfIgnoreCase));
-   //Result := StringReplace(a, '///'+'SPLITJS', e, MkSet(rfReplaceAll,rfIgnoreCase));
+  Result := StringReplace(a, '///' + c + '///', e,
+    MkSet(rfReplaceAll, rfIgnoreCase));
+  // Result := StringReplace(a, '///'+'SPLITJS', e, MkSet(rfReplaceAll,rfIgnoreCase));
 end;
 
-function ReplaceEx2(a,c,e:String):String;
+function ReplaceEx2(a, c, e: String): String;
 begin
 
-  Result := StringReplace(a, '///'+c+'///', e, MkSet(rfReplaceAll,rfIgnoreCase));
-   //Result := StringReplace(a, '///'+'SPLITJS', e, MkSet(rfReplaceAll,rfIgnoreCase));
+  Result := StringReplace(a, '///' + c + '///', e,
+    MkSet(rfReplaceAll, rfIgnoreCase));
+  // Result := StringReplace(a, '///'+'SPLITJS', e, MkSet(rfReplaceAll,rfIgnoreCase));
 end;
 
-procedure Gener(pcbdata,config:String);
+procedure Gener(pcbdata, config: String);
 var
   S: TStringList;
   Data: String;
@@ -970,24 +1225,35 @@ begin
   Data := S.Text;
   S.Free;
 
-  Data := ReplaceEx(Data,'CSS',GetWDFileName('web\ibom.css'));
-  Data := ReplaceEx(Data,'USERCSS',GetWDFileName('web\user-file-examples\user.css'));
-  Data := ReplaceEx(Data,'SPLITJS',GetWDFileName('web\split.js'));
-  Data := ReplaceEx(Data,'LZ-STRING',GetWDFileName('web\lz-string.js'));
-  Data := ReplaceEx(Data,'POINTER_EVENTS_POLYFILL',GetWDFileName('web\pep.js'));
-  Data := ReplaceEx2(Data,'CONFIG',config);
-  Data := ReplaceEx2(Data,'PCBDATA',pcbdata+#13#10+#13#10+StringLoadFromFile(GetWDFileName('helper.js')));
-  Data := ReplaceEx(Data,'UTILJS',GetWDFileName('web\util.js'));
-  Data := ReplaceEx(Data,'RENDERJS',GetWDFileName('web\render.js'));
-  Data := ReplaceEx(Data,'TABLEUTILJS',GetWDFileName('web\table-util.js'));
-  Data := ReplaceEx(Data,'IBOMJS',GetWDFileName('web\ibom.js'));
-  Data := ReplaceEx(Data,'USERJS',GetWDFileName('web\user-file-examples\user.js'));
-  Data := ReplaceEx(Data,'USERHEADER',GetWDFileName('web\user-file-examples\userheader.html'));
-  Data := ReplaceEx(Data,'USERFOOTER',GetWDFileName('web\user-file-examples\userfooter.html'));
+  Data := ReplaceEx(Data, 'CSS', GetWDFileName('web\ibom.css'));
+  Data := ReplaceEx(Data, 'USERCSS', GetWDFileName('web\user-file-examples\user.css'));
+  Data := ReplaceEx(Data, 'SPLITJS', GetWDFileName('web\split.js'));
+  Data := ReplaceEx(Data, 'LZ-STRING', GetWDFileName('web\lz-string.js'));
+  Data := ReplaceEx(Data, 'POINTER_EVENTS_POLYFILL', GetWDFileName('web\pep.js'));
+  Data := ReplaceEx2(Data, 'CONFIG', config);
+  Data := ReplaceEx2(Data, 'PCBDATA', pcbdata + #13#10 + StringLoadFromFile(GetWDFileName('altium-pcbdata.js')));
+  Data := ReplaceEx(Data, 'UTILJS', GetWDFileName('web\util.js'));
+  Data := ReplaceEx(Data, 'RENDERJS', GetWDFileName('web\render.js'));
+  Data := ReplaceEx(Data, 'TABLEUTILJS', GetWDFileName('web\table-util.js'));
+  Data := ReplaceEx(Data, 'IBOMJS', GetWDFileName('web\ibom.js'));
+  Data := ReplaceEx2(Data, 'USERJS', StringLoadFromFile(GetWDFileName('web\user-file-examples\user.js')) + #13#10 + StringLoadFromFile(GetWDFileName('altium-user.js')));
+  Data := ReplaceEx(Data, 'USERHEADER', GetWDFileName('web\user-file-examples\userheader.html'));
+  Data := ReplaceEx(Data, 'USERFOOTER', GetWDFileName('web\user-file-examples\userfooter.html'));
 
   S := TStringList.Create;
   S.Text := Data;
   S.SaveToFile(GetOutputFileNameWithExtension('.html'));
+  S.Free;
+end;
+
+procedure Gener2(pcbdata, config: String);
+var
+  S: TStringList;
+  Data: String;
+begin
+  S := TStringList.Create;
+  S.Text := pcbdata;
+  S.SaveToFile(GetOutputFileNameWithExtension('.js'));
   S.Free;
 end;
 
@@ -1388,7 +1654,7 @@ Begin
   // Hide Progress Bar
   // ProgressBar.Visible  := False;
 
-  //_ss.SaveToFile(GetOutputFileNameWithExtension('.csv.txt'));
+  // _ss.SaveToFile(GetOutputFileNameWithExtension('.csv.txt'));
   _ss.Free;
 
 End; // procedure FetchComponents( Dummy: Integer );
@@ -1434,9 +1700,14 @@ End;
 procedure SetState_Controls;
 Begin
   LayerFilterCb.ItemIndex := LayerFilterIndex;
-  FieldSeparatorCb.ItemIndex := FieldSeparatorIndex;
-  //PluginExecutableEdt.Text := PluginExecutable;
-  /////////////////////////////////////////////////////////////
+  FormatCb.ItemIndex := FormatIndex;
+  // FieldSeparatorCb.ItemIndex := FieldSeparatorIndex;
+  DarkModeChk.Checked := DarkMode;
+  AddNetsChk.Checked := AddNets;
+  Highlighting1PinChk.Checked := Highlighting1Pin;
+  FabLayerChk.Checked := FabLayer;
+  // PluginExecutableEdt.Text := PluginExecutable;
+  /// //////////////////////////////////////////////////////////
   {
     ParametersComboBox          .ItemIndex := ParametersComboBox.Items.IndexOf(ParameterName);
     VariantsComboBox            .ItemIndex := VariantsComboBox  .Items.IndexOf(VariantName);
@@ -1450,7 +1721,7 @@ End;
 
 Procedure SetState_FromParameters(AParametersList: String);
 Var
-  s: String;
+  S: String;
 Begin
   InitializeProject(0);
   {
@@ -1467,8 +1738,13 @@ Begin
   TargetFileName := '';
   TargetPrefix := '';
   LayerFilterIndex := 0;
+  FormatIndex := 0;
   FieldSeparatorIndex := 0;
   PluginExecutable := 'gostbomkompas.exe';
+  DarkMode := False;
+  AddNets := False;
+  Highlighting1Pin := False;
+  FabLayer := False;
   {
     If GetState_Parameter(AParametersList, 'ParameterName'       , S) Then ParameterName        := S;
     If GetState_Parameter(AParametersList, 'VariantName'         , S) Then VariantName          := S;
@@ -1479,18 +1755,28 @@ Begin
     If GetState_Parameter(AParametersList, 'CreateEngineeringBOM', S) Then CreateEngineeringBOM := StringsEqual(S, 'True');
     If GetState_Parameter(AParametersList, 'OpenOutputs'         , S) Then OpenOutputs          := StringsEqual(S, 'True');
     If GetState_Parameter(AParametersList, 'AddToProject'        , S) Then AddToProject         := StringsEqual(S, 'True'); }
-  If GetState_Parameter(AParametersList, 'TargetFileName', s) Then
-    TargetFileName := s + '.PrjPcb';
-  If GetState_Parameter(AParametersList, 'TargetFolder', s) Then
-    TargetFolder := s;
-  If GetState_Parameter(AParametersList, 'TargetPrefix', s) Then
-    TargetPrefix := s;
-  If GetState_Parameter(AParametersList, 'LayerFilterIndex', s) Then
-    LayerFilterIndex := StrToInt(s);
-  If GetState_Parameter(AParametersList, 'FieldSeparatorIndex', s) Then
-    FieldSeparatorIndex := StrToInt(s);
-  If GetState_Parameter(AParametersList, 'PluginExecutable', s) Then
-    PluginExecutable := s;
+  If GetState_Parameter(AParametersList, 'TargetFileName', S) Then
+    TargetFileName := S + '.PrjPcb';
+  If GetState_Parameter(AParametersList, 'TargetFolder', S) Then
+    TargetFolder := S;
+  If GetState_Parameter(AParametersList, 'TargetPrefix', S) Then
+    TargetPrefix := S;
+  If GetState_Parameter(AParametersList, 'LayerFilterIndex', S) Then
+    LayerFilterIndex := StrToInt(S);
+  If GetState_Parameter(AParametersList, 'FormatIndex', S) Then
+    FormatIndex := StrToInt(S);
+  If GetState_Parameter(AParametersList, 'FieldSeparatorIndex', S) Then
+    FieldSeparatorIndex := StrToInt(S);
+  If GetState_Parameter(AParametersList, 'PluginExecutable', S) Then
+    PluginExecutable := S;
+  If GetState_Parameter(AParametersList, 'DarkMode', S) Then
+    DarkMode := StringsEqual(S, 'True');
+  If GetState_Parameter(AParametersList, 'AddNets', S) Then
+    AddNets := StringsEqual(S, 'True');
+  If GetState_Parameter(AParametersList, 'Highlighting1Pin', S) Then
+    Highlighting1Pin := StringsEqual(S, 'True');
+  If GetState_Parameter(AParametersList, 'FabLayer', S) Then
+    FabLayer := StringsEqual(S, 'True');
 
   SetState_Controls;
 End;
@@ -1506,9 +1792,14 @@ Begin
     CreateAgileBOM        := CreateAgileBOMCheckBox      .Checked;
   }
   LayerFilterIndex := LayerFilterCb.ItemIndex;
-  FieldSeparatorIndex := FieldSeparatorCb.ItemIndex;
-  //PluginExecutable := PluginExecutableEdt.Text;
-  ///////////////////////////////////////////////
+  FormatIndex := FormatCb.ItemIndex;
+  // FieldSeparatorIndex := FieldSeparatorCb.ItemIndex;
+  DarkMode := DarkModeChk.Checked;
+  AddNets := AddNetsChk.Checked;
+  Highlighting1Pin := Highlighting1PinChk.Checked;
+  FabLayer := FabLayerChk.Checked;
+  // PluginExecutable := PluginExecutableEdt.Text;
+  /// ////////////////////////////////////////////
 End;
 
 Function GetState_FromParameters: String;
@@ -1525,17 +1816,24 @@ Begin
     Result := Result + '|' + 'CreateEngineeringBOM=' + BoolToStr(CreateEngineeringBOM, True);
   }
   Result := Result + '|' + 'LayerFilterIndex=' + IntToStr(LayerFilterIndex);
-  Result := Result + '|' + 'FieldSeparatorIndex=' + IntToStr(FieldSeparatorIndex);
+  Result := Result + '|' + 'FormatIndex=' + IntToStr(FormatIndex);
+  Result := Result + '|' + 'FieldSeparatorIndex=' +
+    IntToStr(FieldSeparatorIndex);
   Result := Result + '|' + 'PluginExecutable=' + PluginExecutable;
+  Result := Result + '|' + 'DarkMode=' + BoolToStr(DarkMode, True);
+  Result := Result + '|' + 'AddNets=' + BoolToStr(AddNets, True);
+  Result := Result + '|' + 'Highlighting1Pin=' +
+    BoolToStr(Highlighting1Pin, True);
+  Result := Result + '|' + 'FabLayer=' + BoolToStr(FabLayer, True);
 End;
 
 procedure CreateFile(F: string);
 var
-  s: TStringList;
+  S: TStringList;
 begin
-  s := TStringList.Create;
-  s.SaveToFile(F);
-  s.Free;
+  S := TStringList.Create;
+  S.SaveToFile(F);
+  S.Free;
 end;
 
 function GetPluginExecutableFileName: String;
@@ -1577,8 +1875,15 @@ begin
   SetState_FromParameters(Parameters);
   FetchComponents(0);
   tmp := PickAndPlaceOutputEx;
-  cfg := GenerConf();
-  Gener(tmp,cfg);
+  if FormatIndex = 0 then
+  begin
+    cfg := GenerConf();
+    Gener(tmp, cfg);
+  end
+  else
+  begin
+    Gener2(tmp, cfg);
+  end;
   f2 := GetOutputFileNameWithExtension('.csv');
   f5 := GetPluginExecutableFileName();
 end;
@@ -1613,13 +1918,15 @@ Begin
   LayerFilterCb.Items.Add('Top');
   LayerFilterCb.Items.Add('Bottom');
 
-  FieldSeparatorCb.Items.Add(',');
-  FieldSeparatorCb.Items.Add(';');
-  FieldSeparatorCb.Items.Add('Space');
-  FieldSeparatorCb.Items.Add('Tab');
+  FormatCb.Items.Add('HTML');
+  FormatCb.Items.Add('JS');
 
+  // FieldSeparatorCb.Items.Add(',');
+  // FieldSeparatorCb.Items.Add(';');
+  // FieldSeparatorCb.Items.Add('Space');
+  // FieldSeparatorCb.Items.Add('Tab');
 
-////////////////////////////////////////////////////
+  /// /////////////////////////////////////////////////
   {
     // Fetch the Flattened schematic sheet document.  This is a fictitious document
     // generated when the project is compiled containing all components from all
@@ -1728,9 +2035,7 @@ begin
   ModalResult := mrOK;
 end;
 
-
 procedure TMainFrm.CancelBtnClick(Sender: TObject);
 begin
   ModalResult := mrCancel;
 end;
-
