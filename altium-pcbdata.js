@@ -69,8 +69,6 @@ function fromaltium(_data_) {
     var font_data = getfont();
 
     for (const key in _data_.Data) {
-        console.log(_data_.Data[key]);
-
         var item = _data_.Data[key];
 
         //TODO: NoBOM<>Skipped looks like it DNP
@@ -168,7 +166,6 @@ function fromaltium(_data_) {
     }
 
     for (const key in _data_.Board) {
-        console.log(_data_.Board[key]);
         var item = _data_.Board[key];
 
         if (item.Type == "segment") {
@@ -193,7 +190,6 @@ function fromaltium(_data_) {
     }
 
     for (const key in _data_.Extra) {
-        console.log(_data_.Extra[key]);
         var item = _data_.Extra[key];
 
         if (item.Type == "segment") {
@@ -247,6 +243,47 @@ function fromaltium(_data_) {
                 tracks.F.push(segment);
                 tracks.B.push(segment);
             }
+
+            if (_data_.Settings.AddViasHoles) {
+                var footprint = {};
+                footprint.bbox = {};
+                footprint.bbox.angle = 0;
+                footprint.bbox.pos = [0, 0];
+                footprint.bbox.relpos = [0, 0];
+                footprint.bbox.size = [0, 0];
+
+                footprint.drawings = [];
+                //TODO: no matter
+                footprint.layer = "F";
+
+                footprint.pads = [];
+
+                var pad = {};
+                pad.angle = 0;
+                pad.drillshape = "circle";
+                pad.drillsize = [item.DrillWidth * 1, item.DrillWidth * 1];
+                if (item.Layer == "TopLayer") pad.layers = ["F"];
+                if (item.Layer == "BottomLayer") pad.layers = ["B"];
+                if (item.Layer == "MultiLayer") pad.layers = ["F", "B"];
+                pad.offset = [0, 0];
+                pad.pos = [item.X * 1, item.Y * 1];
+                pad.shape = "circle";
+                pad.size = [item.Width * 1, item.Width * 1];
+                pad.type = "th";
+                if (_data_.Settings.AddNets) {
+                    //TODO: always true
+                    pad.net = itemPad.Net;
+                    if (itemPad.Net != "") {
+                        if (!(itemPad.Net in _nets)) {
+                            _nets[itemPad.Net] = itemPad.Net;
+                            nets.push(itemPad.Net);
+                        }
+                    }
+                }
+
+                footprint.pads.push(pad);
+                footprints.push(footprint);
+            }
         }
         if (item.Type == "arc") {
             var segment = {};
@@ -264,13 +301,18 @@ function fromaltium(_data_) {
             var segment = {};
             segment.angle = item.Angle * 1;
             segment.attr = [];
-            if (item.Mirrored == "1") {
+            if (item.Mirrored) {
                 segment.attr.push("mirrored");
             }
             segment.height = item.Height * 1;
             segment.justify = [0, 0];
             segment.pos = [item.X * 1, item.Y * 1];
-            segment.ref = 1;
+            if (item.Designator) {
+                segment.ref = 1;
+            }
+            if (item.Value) {
+                segment.val = 1;
+            }
             segment.text = fixtext(item.Text, font_data);
             segment.thickness = 0.15;
             segment.width = item.Width * 1;
@@ -284,6 +326,20 @@ function fromaltium(_data_) {
             //segment.start = [item.X1 * 1, item.Y1 * 1];
             //segment.type = "polygon";
             //segment.width = 1;//item.Width * 1;
+
+
+            if ((item.Layer == "TopOverlay") || (item.Layer == "BottomOverlay")) {
+                //segment.end = [item.X2 * 1, item.Y2 * 1];
+                //segment.start = [item.X1 * 1, item.Y1 * 1];
+                segment.type = "polygon";
+                //"filled": 1,
+                //segment.width = 1;//item.Width * 1;
+
+                segment.angle = 0;
+                //segment.net: "No Net"
+                segment.pos = [0, 0];
+            }
+
 
             if (_data_.Settings.AddNets) {
                 if ((item.Layer == "TopLayer") || (item.Layer == "BottomLayer")) {
@@ -317,8 +373,8 @@ function fromaltium(_data_) {
 
             segment.polygons = polygons;//[polygons];
 
-            // if (item.Layer == "TopOverlay") drawings.silkscreen.F.push(segment);
-            // if (item.Layer == "BottomOverlay") drawings.silkscreen.B.push(segment);
+            if (item.Layer == "TopOverlay") drawings.silkscreen.F.push(segment);
+            if (item.Layer == "BottomOverlay") drawings.silkscreen.B.push(segment);
             if (item.Layer == "TopLayer") zones.F.push(segment);
             if (item.Layer == "BottomLayer") zones.B.push(segment);
         }
