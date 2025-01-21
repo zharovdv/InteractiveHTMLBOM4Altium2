@@ -21,12 +21,14 @@ Var
   DarkMode: Boolean;
   AddNets: Boolean;
   AddTracks: Boolean;
-  AddViasHoles: Boolean;
   Highlighting1Pin: Boolean;
   FabLayer: Boolean;
   Title: String;
   Company: String;
   Revision: String;
+  ValueParameterName: String;
+  ColumnsParametersNames: TStringList;
+  GroupParametersNames: TStringList;
 
 Function GetOutputFileNameWithExtension(Ext: String): String;
 Begin
@@ -176,7 +178,7 @@ begin
   end;
 end;
 
-function GetSeparator: String;
+function GetSeparator(Dummy: Integer): String;
 var
   Separator: TString;
 begin
@@ -227,7 +229,7 @@ begin
   Result := nil;
 end;
 
-function GetFlatDoc: IDocument;
+function GetFlatDoc(Dummy: Integer): IDocument;
 Begin
   FlattenedDoc := CurrProject.DM_DocumentFlattened;
 
@@ -277,7 +279,7 @@ Var
   ComponentVariation: IComponentVariation;
 
 Begin
-  FlattenedDoc := GetFlatDoc;
+  FlattenedDoc := GetFlatDoc(0);
 
   CompCount := FlattenedDoc.DM_ComponentCount;
 
@@ -329,7 +331,7 @@ Var
   ComponentVariation: IComponentVariation;
 
 Begin
-  FlattenedDoc := GetFlatDoc;
+  FlattenedDoc := GetFlatDoc(0);
 
   CompCount := FlattenedDoc.DM_ComponentCount;
 
@@ -354,13 +356,153 @@ begin
     Result := 'false';
 end;
 
-function JSONStrToStr(v: Boolean): String;
+function JSONStrToStr(v: String): String;
+var
+  i: Integer;
 begin
-  // TODO: Escape
-  Result := '"' + v + '"';
+  Result := '"';
+  for i := 1 to Length(v) do
+  begin
+    case v[i] of
+      '"':
+        Result := Result + '\"';
+      '\':
+        Result := Result + '\\';
+      #$08:
+        Result := Result + '\b';
+      #$09:
+        Result := Result + '\t';
+      #$0a:
+        Result := Result + '\n';
+      #$0b:
+        Result := Result + '\v';
+      #$0c:
+        Result := Result + '\f';
+      #$0d:
+        Result := Result + '\r';
+      #$00 .. #$07, #$0e .. #$1f, #$7e .. #$7f:
+        begin
+          Result := Result + '\u' + IntToHex(Ord(v[i]), 4);
+        end;
+    else
+      Result := Result + '\u' + IntToHex(Ord(v[i]), 4);
+    end;
+  end;
+  Result := Result + '"';
 end;
 
-function PickAndPlaceOutputEx: String;
+procedure GetParameters(_pcbBoard: TObject);
+var
+  stringList: TStringList;
+  argIterator: IPCB_BoardIterator;
+  pcbPrimitive: IPCB_Primitive;
+  pcb_primitiveparametersIntf: IPCB_PrimitiveParameters;
+  argIndex: Integer;
+  name: String;
+begin
+  stringList := TStringList.Create;
+  stringList.Sorted := True;
+  stringList.Duplicates := dupIgnore;
+  stringList.Add('[DesignItemID]');
+  stringList.Add('[Description]');
+  stringList.Add('[Comment]');
+  stringList.Add('[Footprint]');
+  argIterator := _pcbBoard.BoardIterator_Create();
+  argIterator.AddFilter_ObjectSet(MkSet(eComponentObject));
+  // V6AllLayersSet
+  argIterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
+  argIterator.AddFilter_Method(eProcessAll);
+  pcbPrimitive := argIterator.FirstPCBObject();
+  while (pcbPrimitive <> nil) do
+  begin
+    pcb_primitiveparametersIntf := pcbPrimitive;
+    for argIndex := 0 to pcb_primitiveparametersIntf.Count() - 1 do
+    begin
+      name := pcb_primitiveparametersIntf.GetParameterByIndex(argIndex)
+        .GetName();
+
+      // if (name != null && !stringList.Contains(name))
+      // if name<>nil then
+      begin
+        stringList.Add(name);
+      end;
+    end;
+    pcbPrimitive := argIterator.NextPCBObject();
+  end;
+  _pcbBoard.BoardIterator_Destroy(argIterator);
+
+  ValueParameterCb.Items.AddStrings(stringList);
+  ColumnsParametersClb.Items.AddStrings(stringList);
+  GroupParametersClb.Items.AddStrings(stringList);
+end;
+
+function getparamc(comp: IPCB_Component): Integer;
+var
+  stateText: string;
+  str1: string;
+  paramsComponent: TStringList;
+  pcb_primitiveparametersIntf: IPCB_PrimitiveParameters;
+  argIndex: Integer;
+  parameterByIndex: IPCB_Parameter;
+  name, value: String;
+begin
+  stateText := comp.GetState_Name().GetState_Text();
+  str1 := comp.GetState_SourceCompDesignItemID();
+  // if (string.IsNullOrEmpty(str1))
+  // str1 = "";
+  paramsComponent := TStringList.Create;
+  paramsComponent.Add('[DesignItemID]' + '=' + str1);
+  paramsComponent.Add('[Footprint]' + '=' + comp.GetState_Pattern());
+  paramsComponent.Add('[Comment]' + '=' + comp.GetState_Comment()
+    .GetState_ConvertedString());
+  paramsComponent.Add('[Description]' + '=' +
+    comp.GetState_SourceDescription());
+
+  begin
+    pcb_primitiveparametersIntf := comp;
+    for argIndex := 0 to pcb_primitiveparametersIntf.Count() - 1 do
+    begin
+      parameterByIndex := pcb_primitiveparametersIntf.GetParameterByIndex
+        (argIndex);
+      name := parameterByIndex.GetName();
+      value := parameterByIndex.GetValue();
+      // if (!string.IsNullOrEmpty(name)) then
+      // paramsComponent[name] := parameterByIndex.GetValue();
+      paramsComponent.Add(name + '=' + value);
+    end;
+  end;
+  Result := paramsComponent;
+end;
+
+function getpurpur(Dummy: Integer): TStringList;
+var
+  s: TStringList;
+  i: Integer;
+begin
+  s := TStringList.Create;
+
+  for i := 0 to ColumnsParametersNames.Count - 1 do
+  begin
+    s.Add(ColumnsParametersNames[i]);
+  end;
+  Result := s;
+end;
+
+function getpurpur2(Dummy: Integer): TStringList;
+var
+  s: TStringList;
+  i: Integer;
+begin
+  s := TStringList.Create;
+
+  for i := 0 to GroupParametersNames.Count - 1 do
+  begin
+    s.Add(GroupParametersNames[i]);
+  end;
+  Result := s;
+end;
+
+function PickAndPlaceOutputEx(Dummy: Boolean): String;
 var
   Board: IPCB_Board; // document board object
   Component: IPCB_Component; // component object
@@ -384,7 +526,8 @@ var
   PadX, PadY, PadAngle: TString;
   X1, Y1, X2, Y2, _W, _H: Single;
   Width, Height: String;
-  PadWidth, PadHeight, PadPin1: String;
+  PadWidth, PadHeight: String;
+  PadPin1: Boolean;
   PadShape, PadDrillShape: String;
   PadDrillWidth, PadDrillHeight: String;
   EdgeType: String;
@@ -399,6 +542,12 @@ var
   kk: Integer;
 
   _Document: IServerDocument;
+  sl: TStringList;
+  tmpx, tmpy: String;
+  purpur: TStringList;
+  purpur2: TStringList;
+  hhhhi: Integer;
+  hhhh: String;
 Begin
   // Make sure the current Workspace opens or else quit this script
   CurrWorkSpace := GetWorkSpace;
@@ -426,30 +575,31 @@ Begin
     Exit;
   End;
 
+  GetParameters(Board);
+
+  purpur := getpurpur(0);
+  purpur2 := getpurpur2(0);
+
   Iterator := Board.BoardIterator_Create;
   Iterator.AddFilter_ObjectSet(MkSet(eComponentObject));
   Iterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
   Iterator.AddFilter_Method(eProcessAll);
 
-  Separator := GetSeparator();
+  Separator := GetSeparator(0);
   Count := 0;
   PnPout := TStringList.Create;
   Component := Iterator.FirstPCBObject;
 
-  // PnPout.Add('Designator'  + #9 + 'Footprint' + #9 + 'Xref' + #9 + 'Yref'  + #9 + 'Rotation' + #9 + 'Layer' + #9 + 'Description');
-  // PnPout.Add('Designator'  + Separator + 'Comment'  + Separator + 'Layer'  + Separator + 'Part Number'  + Separator + 'Footprint'  + Separator + 'Center-X(mm)'  + Separator + 'Center-Y(mm)'  + Separator + 'Rotation'  + Separator + 'Description'  + Separator + 'Mounting_Type');
-  // PnPout.Add('Designator'  + #9 + 'Footprint' + #9 + 'Xref' + #9 + 'Yref'  + #9 + 'Rotation' + #9 + 'Layer' + #9 + 'Description');
-
-  PnPout.Add('var altiumbom = {');
+  if (Dummy) then
+  begin
+    PnPout.Add('var altiumbom = ');
+  end;
+  PnPout.Add('{');
+  PnPout.Add('"Signature":' + JSONStrToStr('Altium') + ',');
   PnPout.Add('"Data":[');
 
   While (Component <> Nil) Do
   Begin
-    // ccc := CurrProject.FindComponent(Component.Designator);
-    // ccc := Component.GetComponent;
-    // xxx := ccc.DM_GetParameterByName('Component Kind');
-    // ShowMessage(xxx);
-
     NoBOM := False;
     ccc := GetCompFromCompEx(Component);
     CurrParm := ccc.DM_GetParameterByName('Component Kind');
@@ -459,28 +609,12 @@ Begin
       NoBOM := True;
     end;
 
-    // Test if the component is SMD (all pads without hole)
-    ComponentIterator := Component.GroupIterator_Create;
-    ComponentIterator.AddFilter_ObjectSet(MkSet(ePadObject));
-    Pad := ComponentIterator.FirstPCBObject;
-    While (Pad <> Nil) Do
-    Begin
-      //
-      SMDcomponent := True;
-      If Pad.Layer = eMultiLayer Then
-      Begin
-        SMDcomponent := False;
-        Break;
-      End;
-      Pad := ComponentIterator.NextPCBObject;
-    End;
     // Print Pick&Place data of SMD components to file
     if UseItEx(Component.SourceUniqueId, Component.SourceDesignator,
       ProjectVariant) then
       if (LayerFilterIndex = 0) or
         ((LayerFilterCb = 1) and (Component.Layer = eTopLayer)) or
         ((LayerFilterCb = 2) and (Component.Layer = eBottomLayer)) then
-      // If (SMDcomponent = True) Then
       Begin
         Inc(Count);
         If (Count > 1) Then
@@ -492,10 +626,6 @@ Begin
         x := JSONFloatToStr(CoordToMMs(Component.x - Board.XOrigin));
         Y := JSONFloatToStr(-CoordToMMs(Component.Y - Board.YOrigin));
         Rotation := IntToStr(Component.Rotation);
-        // Component.Component.
-        // Designator,Comment,Layer,Part Number,Center-X(mm),Center-Y(mm),Rotation,Description,Mounting_Type
-        // PnPout.Add(Component.SourceDesignator  + #9 + Component.SourceLibReference + #9 + X + #9 + Y  + #9 + Rotation + #9 + Layer + #9 + Component.FootprintDescription+#9+Component.SourceUniqueId+#9+Component.Pattern+#9+Component.SourceFootprintLibrary+#9+Component.SourceLibReference);
-        // PnPout.Add(Preprocess(Component.SourceDesignator)  + Separator + Preprocess('Comment') + Separator + Preprocess(Layer) + Separator + Preprocess(Component.SourceLibReference)  + Separator + Preprocess(Component.Pattern) + Separator + Preprocess(X) + Separator + Preprocess(Y) + Separator + Preprocess(Rotation) + Separator + Preprocess('Description') + Separator + Preprocess('SMD'));
 
         // TODO: Is it correct? X1,Y1 vs X,Y
         X1 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Left
@@ -529,8 +659,36 @@ Begin
           JSONStrToStr(Component.SourceDesignator) + ',');
         PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
         PnPout.Add('"Footprint":' + JSONStrToStr(Component.Pattern) + ',');
+
+        sl := getparamc(Component);
+
         PnPout.Add('"PartNumber":' +
-          JSONStrToStr(Component.SourceLibReference) + ',');
+          JSONStrToStr(sl.Values[ValueParameterName]) + ',');
+        PnPout.Add('"Value":' + JSONStrToStr
+          (sl.Values[ValueParameterName]) + ',');
+
+        PnPout.Add('"Fields":' + '[');
+
+        for hhhhi := 0 to purpur.Count - 1 do
+        begin
+          if (hhhhi > 0) then
+            PnPout.Add(',');
+          hhhh := purpur[hhhhi];
+          PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
+        end;
+        PnPout.Add('],');
+
+        PnPout.Add('"Group":' + '[');
+
+        for hhhhi := 0 to purpur2.Count - 1 do
+        begin
+          if (hhhhi > 0) then
+            PnPout.Add(',');
+          hhhh := purpur2[hhhhi];
+          PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
+        end;
+        PnPout.Add('],');
+
         PnPout.Add('"X":' + (x) + ',');
         PnPout.Add('"Y":' + (Y) + ',');
         PnPout.Add('"Width":' + (Width) + ',');
@@ -673,11 +831,11 @@ Begin
 
           end;
 
-          PadPin1 := '0';
-          if (Pad.Name = '1') then
+          PadPin1 := false;
+          if (Pad.name = '1') then
           // if ("A1".indexOf(Pad.Name) != -1) then
           begin
-            PadPin1 := '1';
+            PadPin1 := true;
           end;
 
           PadWidth := StringReplace(PadWidth, ',', '.',
@@ -692,7 +850,7 @@ Begin
 
           Net := 'No Net';
           if Prim.Net <> nil then
-            Net := Prim.Net.Name;
+            Net := Prim.Net.name;
 
           PnPout.Add('"Layer":' + JSONStrToStr(PadLayer) + ',');
           PnPout.Add('"Type":' + JSONStrToStr(PadType) + ',');
@@ -709,7 +867,7 @@ Begin
           PnPout.Add('"Width":' + (PadWidth) + ',');
           PnPout.Add('"Height":' + (PadHeight) + ',');
           PnPout.Add('"Angle":' + (PadAngle) + ',');
-          PnPout.Add('"Pin1":' + JSONStrToStr(PadPin1) + ',');
+          PnPout.Add('"Pin1":' + JSONBoolToStr(PadPin1) + ',');
           PnPout.Add('"Net":' + JSONStrToStr(Net));
 
           PnPout.Add('}');
@@ -843,6 +1001,7 @@ Begin
     eBottomLayer, eMultiLayer));
   Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject, eTextObject,
     ePolyObject, eRegionObject, eViaObject));
+  // Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject, eTextObject ));
   // eFillObject, eRegionObject
   // Iter.AddFilter_ObjectSet(MkSet(eViaObject));
   // Iter.AddFilter_ObjectSet(MkSet(eTrackObject));
@@ -1022,7 +1181,7 @@ Begin
             Layer := 'BottomLayer';
           Net := 'No Net';
           if Prim.Net <> nil then
-            Net := Prim.Net.Name;
+            Net := Prim.Net.name;
 
           EdgeType := 'segment';
           PnPout.Add('{');
@@ -1056,7 +1215,7 @@ Begin
             Layer := 'MultiLayer';
           Net := 'No Net';
           if Prim.Net <> nil then
-            Net := Prim.Net.Name;
+            Net := Prim.Net.name;
 
           EdgeType := 'via';
           PnPout.Add('{');
@@ -1081,7 +1240,7 @@ Begin
             Layer := 'BottomLayer';
           Net := 'No Net';
           if Prim.Net <> nil then
-            Net := Prim.Net.Name;
+            Net := Prim.Net.name;
 
           EdgeType := 'polygon';
           PnPout.Add('{');
@@ -1107,7 +1266,7 @@ Begin
             if CO1.ObjectId = eRegionObject then
             begin
               Inc(k);
-              If (k > 0) Then
+              If (k > 1) Then
                 PnPout.Add(',');
               PnPout.Add('[');
               contour := CO1.GetMainContour();
@@ -1123,7 +1282,7 @@ Begin
                   Board.YOrigin));
                 PnPout.Add('[');
                 PnPout.Add(EdgeX1 + ',');
-                PnPout.Add(EdgeY1 + ',');
+                PnPout.Add(EdgeY1 );
                 PnPout.Add(']');
               end;
               PnPout.Add(']');
@@ -1148,7 +1307,7 @@ Begin
             Layer := 'BottomLayer';
           Net := 'No Net';
           if Prim.Net <> nil then
-            Net := Prim.Net.Name;
+            Net := Prim.Net.name;
 
           EdgeType := 'polygon';
           PnPout.Add('{');
@@ -1171,7 +1330,7 @@ Begin
             if CO1.ObjectId = eRegionObject then
             begin
               Inc(k);
-              If (k > 0) Then
+              If (k > 1) Then
                 PnPout.Add(',');
               PnPout.Add('[');
               contour := CO1.GetMainContour();
@@ -1187,7 +1346,7 @@ Begin
                   Board.YOrigin));
                 PnPout.Add('[');
                 PnPout.Add(EdgeX1 + ',');
-                PnPout.Add(EdgeY1 + ',');
+                PnPout.Add(EdgeY1 );
                 PnPout.Add(']');
               end;
               PnPout.Add(']');
@@ -1218,9 +1377,25 @@ Begin
   PnPout.Add('"Settings":{');
   PnPout.Add('"AddNets":' + JSONBoolToStr(AddNets) + ',');
   PnPout.Add('"AddTracks":' + JSONBoolToStr(AddTracks) + ',');
-  PnPout.Add('"AddViasHoles":' + JSONBoolToStr(AddViasHoles));
+
+  PnPout.Add('"Fields":' + '[');
+
+   for hhhhi := 0 to purpur.Count - 1 do
+   begin
+     if (hhhhi > 0) then
+       PnPout.Add(',');
+       hhhh := purpur[hhhhi];
+          PnPout.Add(JSONStrToStr(hhhh));
+   end;
+  PnPout.Add(']');
+
   PnPout.Add('}');
-  PnPout.Add('};');
+  PnPout.Add('}');
+
+  if (Dummy) then
+  begin
+    PnPout.Add(';');
+  end;
 
   Result := PnPout.Text;
 
@@ -1235,9 +1410,11 @@ Begin
   }
 End;
 
-function GenerConf(): String;
+function GenerConf(Dummy: Integer): String;
 var
   PnPout: TStringList;
+  s: TStringList;
+  i: Integer;
 Begin
   PnPout := TStringList.Create;
 
@@ -1252,7 +1429,18 @@ Begin
   PnPout.Add('"board_rotation":' + JSONStrToStr('0.0') + ',');
   PnPout.Add('"checkboxes":' + JSONStrToStr('Sourced,Placed') + ',');
   PnPout.Add('"show_silkscreen":' + JSONBoolToStr(True) + ',');
-  PnPout.Add('"fields":' + ('["Value", "Footprint"]') + ',');
+  PnPout.Add('"fields":' + '[');
+
+  s := getpurpur(0);
+  for i := 0 to s.Count - 1 do
+  begin
+    if i > 0 then
+      PnPout.Add(',');
+
+    PnPout.Add(JSONStrToStr(s[i]));
+  end;
+
+  PnPout.Add(']' + ',');
   PnPout.Add('"show_pads":' + JSONBoolToStr(True) + ',');
   PnPout.Add('"layer_view":' + JSONStrToStr('FB') + ',');
   PnPout.Add('};');
@@ -1296,24 +1484,24 @@ end;
 
 function StringLoadFromFile(FileName: String): String;
 var
-  S: TStringList;
+  s: TStringList;
 begin
-  S := TStringList.Create;
-  S.LoadFromFile(FileName);
-  Result := S.Text;
-  S.Free;
+  s := TStringList.Create;
+  s.LoadFromFile(FileName);
+  Result := s.Text;
+  s.Free;
 end;
 
 function ReplaceEx(a, c, FileName: String): String;
 var
-  S: TStringList;
+  s: TStringList;
   e: String;
   i: Integer;
 begin
-  S := TStringList.Create;
-  S.LoadFromFile(FileName);
-  e := S.Text;
-  S.Free;
+  s := TStringList.Create;
+  s.LoadFromFile(FileName);
+  e := s.Text;
+  s.Free;
 
   Result := StringReplace(a, '///' + c + '///', e,
     MkSet(rfReplaceAll, rfIgnoreCase));
@@ -1330,13 +1518,13 @@ end;
 
 procedure Gener(pcbdata, config: String);
 var
-  S: TStringList;
+  s: TStringList;
   Data: String;
 begin
-  S := TStringList.Create;
-  S.LoadFromFile(GetWDFileName('web\ibom.html'));
-  Data := S.Text;
-  S.Free;
+  s := TStringList.Create;
+  s.LoadFromFile(GetWDFileName('web\ibom.html'));
+  Data := s.Text;
+  s.Free;
 
   Data := ReplaceEx(Data, 'CSS', GetWDFileName('web\ibom.css'));
   Data := ReplaceEx(Data, 'USERCSS',
@@ -1360,21 +1548,32 @@ begin
   Data := ReplaceEx(Data, 'USERFOOTER',
     GetWDFileName('web\user-file-examples\userfooter.html'));
 
-  S := TStringList.Create;
-  S.Text := Data;
-  S.SaveToFile(GetOutputFileNameWithExtension('.html'));
-  S.Free;
+  s := TStringList.Create;
+  s.Text := Data;
+  s.SaveToFile(GetOutputFileNameWithExtension('.html'));
+  s.Free;
 end;
 
 procedure Gener2(pcbdata, config: String);
 var
-  S: TStringList;
+  s: TStringList;
   Data: String;
 begin
-  S := TStringList.Create;
-  S.Text := pcbdata;
-  S.SaveToFile(GetOutputFileNameWithExtension('.js'));
-  S.Free;
+  s := TStringList.Create;
+  s.Text := pcbdata;
+  s.SaveToFile(GetOutputFileNameWithExtension('.js'));
+  s.Free;
+end;
+
+procedure Gener3(pcbdata, config: String);
+var
+  s: TStringList;
+  Data: String;
+begin
+  s := TStringList.Create;
+  s.Text := pcbdata;
+  s.SaveToFile(GetOutputFileNameWithExtension('.json'));
+  s.Free;
 end;
 
 procedure SetupProjectVariant(Dummy: Integer);
@@ -1456,329 +1655,6 @@ begin
   end;
 end;
 
-procedure FetchComponents(Dummy: Integer);
-Var
-  CompIndex: Integer; // An Index for pullin out components
-  PhysCompCount: Integer; // A count of the number of components in document
-  PhysComponent: IComponent; // An Interface handle to the current Component
-  PhysCompIndex: Integer; // An index for pulling out Physical Parts
-  CurrPart: IPart; // An Interface handle to the current Part of a Component
-  CurrSortStr: String; // A String to hold the sorting field
-  CurrPhysDesStr: String; // A String to hold the current Physical Designator
-  CurrFootprintStr: String; // A String to hold the current Footprint
-  CurrDescrStr: String; // A String to hold the current Description
-  CurrLibRefStr: String; // A String to hold the current Library Reference
-  CurrStuffedStr: String;
-  // A String to hold the Stuffed flag for the currrent component
-  FormatStr: String; // A String into which one part's data can be formatted
-  TempStrg: String; // A temporary string for formatting
-  TempChar: String; // A temporary string for one Char when formatting
-  SortLetters: String; // A string for letters of the designator prefix
-  SortNumbers: String; // A string for numbers of the designator
-  SortRest: String; // A string for the rest of the designator
-  SortLetrWid: Integer; // Width of the sort letters column
-  SortNumbWid: Integer; // Width of the sort Numbers column
-  SortRestWid: Integer; // Width of the sort Rest column
-  SortWid: Integer; // Width of the entire sort field
-  SortStart: Integer; // Start of the entire sort field
-  SortCount: Integer; // Number of characters in the Physical Designator
-  SortEnd: Integer; // End of the entire sort field
-  LetrDone: Boolean; // Flag for processing designator prefix letters
-  NumbDone: Boolean; // Flag for processing designator prefix numbers
-  RestDone: Boolean;
-  // Flag for processing the rest of the designator characters
-  SortIndex: Integer; // Temporary Index for chars in the Designator
-  CompCount: Integer; // The Number of Components Flattened Document
-  CompListIndex: Integer; // An index for strings in CompList
-  i: Integer;
-  _n: IParameter;
-  _nn: string;
-  _vv: string;
-  _ss: TStringList;
-  _pp: TStringList;
-  ParmIndex: Integer;
-  ParmCount: Integer; // The Number of Parameters in Component
-  CurrParm: IParameter; // An interface handle to a Parameter
-  iii: Integer;
-  Line: String;
-  ComponentVariation: IComponentVariation;
-
-Begin
-  // Establish fields in Component List
-  SortLetrWid := 10;
-  SortNumbWid := 10;
-  SortRestWid := 50;
-  SortWid := SortLetrWid + SortNumbWid + SortRestWid;
-  // LibRefWid := 30;
-  // DescriptionWid := 50;
-  // FootprintWid := 50;
-  // PhysicalDesWid := 30;
-  // StuffedWid := 1;
-  // LibRefStart := 1;
-  // SortStart := LibRefStart + LibRefWid;
-  // DescriptionStart := SortStart + SortWid;
-  // FootprintStart := DescriptionStart + DescriptionWid;
-  // PhysicalDesStart := FootprintStart + FootprintWid;
-  // S/tuffedStart := PhysicalDesStart + PhysicalDesWid;
-  // L/ibRefEnd := SortStart - 1;
-  // SortEnd := DescriptionStart - 1;
-  // DescriptionEnd := FootprintStart - 1;
-  // FootprintEnd := PhysicalDesStart - 1;
-  // PhysicalDesEnd := StuffedStart - 1;
-  // StuffedEnd := StuffedStart + StuffedWid - 1;
-
-  // Fetch the Flattened schematic sheet document.  This is a fictitious document
-  // generated when the project is compiled containing all components from all
-  // sheets.  This is much more useful for making lists of everything than rummaging
-  // through all the sheets one at a time.  This sheet is not graphical in that
-  // it cannot be viewed like a schematic, but you can view what's in it by using
-  // the Navigator panel.
-  FlattenedDoc := CurrProject.DM_DocumentFlattened;
-
-  // If we couldn't get the flattened sheet, then most likely the project has
-  // not been compiled recently
-  If (FlattenedDoc = Nil) Then
-  Begin
-    // First try compiling the project
-    AddStringParameter('Action', 'Compile');
-    AddStringParameter('ObjectKind', 'Project');
-    RunProcess('WorkspaceManager:Compile');
-
-    // Try Again to open the flattened document
-    FlattenedDoc := CurrProject.DM_DocumentFlattened;
-    If (FlattenedDoc = Nil) Then
-    Begin
-      ShowMessage('NOTICE: Compile the Project before Running this report.');
-      Close;
-      Exit;
-    End; // If (FlattenedDoc = Nil) Then
-  End; // If (FlattenedDoc = Nil) Then
-
-  // Now that we have the flattened document, check how many components are in it
-  CompCount := FlattenedDoc.DM_ComponentCount;
-
-  // Set Up Progress Bar
-  {
-    ProgressBar.Min      := 0;
-    ProgressBar.Max      := CompCount - 1;
-    ProgressBar.Step     := 1;
-    ProgressBar.Position := 0;
-    ProgressBar.Visible  := True;
-  }
-  _pp := TStringList.Create;
-  _pp.Sorted := True;
-  _pp.Duplicates := dupIgnore;
-  For CompIndex := 0 To CompCount - 1 Do
-  Begin
-    CurrComponent := FlattenedDoc.DM_Components[CompIndex];
-    ParmCount := CurrComponent.DM_ParameterCount;
-    For ParmIndex := 0 To ParmCount - 1 Do
-    Begin
-      CurrParm := CurrComponent.DM_Parameters(ParmIndex);
-      _pp.Add(CurrParm.DM_Name);
-    End;
-  end;
-
-  _ss := TStringList.Create;
-
-  Line := 'Designator' + ',' + 'Quantity' + ',';
-  For iii := 0 To _pp.Count - 1 Do
-  begin
-    Line := Line + _pp[iii];
-    if iii <> _pp.Count - 1 then
-      Line := Line + ',';
-  end;
-  _ss.Add(Line);
-
-  // Walk through every component one-by-one pulling out needed information and
-  // writing it into the component string list
-  For CompIndex := 0 To CompCount - 1 Do
-  Begin
-    CurrComponent := FlattenedDoc.DM_Components[CompIndex];
-
-    // Update Progress Bar
-    // ProgressBar.Position := CompIndex;
-
-    // Much information about the component can only be retrieved by examining
-    // one the its sub-parts (Strange, but true.)
-    CurrPart := CurrComponent.DM_SubParts[0];
-
-    // Create the Sort String
-    // Initialize the sort strings and flags
-    SortLetters := '';
-    SortNumbers := '';
-    SortRest := '';
-    LetrDone := False;
-    NumbDone := False;
-    RestDone := False;
-
-    // Fetch the physical designator string so we can parse it
-    TempStrg := Trim(CurrPart.DM_PhysicalDesignator);
-    SortCount := Length(TempStrg);
-
-    // Determine how many parameters it has
-    ParmCount := CurrComponent.DM_ParameterCount;
-    // CurrComponent.DM_GetParameterByName();
-
-    CurrParm := CurrComponent.DM_GetParameterByName('Component Kind');
-    if (CurrParm <> nil) and (CurrParm.DM_Value = 'Standard (No BOM)') then
-    begin
-      continue;
-    end;
-    // [!!!] UGLY
-    CurrParm := CurrComponent.DM_GetParameterByName('Cat_Name');
-    if (CurrParm <> nil) and (CurrParm.DM_Value = 'Реперная метка') then
-    begin
-      continue;
-    end;
-    if not UseIt(CurrComponent, ProjectVariant) then
-      continue;
-    Line := '"' + CurrPart.DM_PhysicalDesignator + '"' + ',' + '"' + '1' +
-      '"' + ',';
-    // Begin walking through parameters to find the specified one
-    For iii := 0 To _pp.Count - 1 Do
-    begin
-      CurrParm := CurrComponent.DM_GetParameterByName(_pp[iii]);
-      if CurrParm <> nil then
-      begin
-        Line := Line + '"' + CurrParm.DM_Value + '"';
-        // _nn := CurrParm.DM_Name;
-        // _vv := CurrParm.DM_Value;
-        // _ss.Add(TempStrg+'.'+_nn+'='+_vv);
-      end
-      else
-      begin
-        Line := Line + '"' + '"';
-        // _nn := _pp[iii];
-        // _vv := 'null';
-        // _ss.Add(TempStrg+'.'+_nn+'='+_vv);
-      end;
-      if iii <> _pp.Count - 1 then
-        Line := Line + ',';
-    end;
-    _ss.Add(Line);
-    {
-      For ParmIndex := 0 To ParmCount - 1 Do
-      Begin
-      // Fetch one of the component's Parameters
-      CurrParm := CurrComponent.DM_Parameters( ParmIndex );
-      _nn := CurrParm.DM_Name;
-      _vv := CurrParm.DM_Value;
-      _ss.Add(TempStrg+'.'+_nn+'='+_vv);
-      End; }
-
-    {
-      // Now iterate through its characters
-      For SortIndex := 1 To SortCount Do
-      Begin
-      // Fetch the next character
-      TempChar := Copy( TempStrg, SortIndex, 1 );
-
-      // If processing prefix letters:
-      If (LetrDone = False)
-      Then
-      Begin
-      // See if it is a letter and will fit
-      If ( ( ((TempChar >= 'A') And (TempChar <= 'Z'))
-      Or ((TempChar >= 'a') And (TempChar <= 'z')) )
-      And (Length( SortLetters ) < SortLetrWid) )
-      Then SortLetters := SortLetters + TempChar
-      Else LetrDone := True;
-      End; // If (LetrDone = False)
-
-      // If processing the prefix numbers:
-      If ((LetrDone = True) And (NumbDone = False))
-      Then
-      Begin
-      // See if it is a number and will fit
-      If ( ((TempChar >= '0') And (TempChar <= '9'))
-      And (Length( SortNumbers ) < SortNumbWid) )
-      Then SortNumbers := SortNumbers + TempChar
-      Else NumbDone := True;
-      End; // If ((LetrDone = True) And (NumbDone = False))
-
-      // If processing the rest of the physical designator:
-      If ((LetrDone = True) And (NumbDone = True) And (RestDone = False))
-      Then
-      Begin
-      // See if there is room for the rest of it
-      If (Length( SortRest ) < SortRestWid)
-      Then SortRest := SortRest + TempChar
-      Else RestDone := True;
-      End; // If ((LetrDone = True) And (NumbDone = True) And (RestDone = False))
-      End; // For (SortIndex := 1 To SortWid Do
-
-      // Now create the sort formatted string
-      TempStrg :=
-      SortLetters
-      + StringOfChar( ' ', SortLetrWid - Length( SortLetters ) )
-      + StringOfChar( '0', SortNumbWid - Length( SortNumbers ) )
-      + SortNumbers
-      + SortRest
-      + StringOfChar( ' ', SortRestWid - Length( SortRest    ) );
-    }
-    {
-      // Exactly fill the Sorting field
-      If ( Length( TempStrg ) > SortWid) // If too long
-      Then TempStrg := Copy( TempStrg, 1, SortWid );
-      CurrSortStr := TempStrg + StringOfChar( ' ', SortWid - Length( TempStrg ) ); // Pad if needed
-
-      // Exactly fill the Library Reference field
-      TempStrg := Trim( CurrPart.DM_LibraryReference );
-      If ( Length( TempStrg ) > LibRefWid) // If too long
-      Then TempStrg := Copy( TempStrg, 1, LibRefWid );
-      CurrLibRefStr := TempStrg + StringOfChar( ' ', LibRefWid - Length( TempStrg ) ); // Pad if needed
-
-      // Exactly fill the Description field
-      TempStrg := Trim( CurrPart.DM_Description );
-      If ( Length( TempStrg ) > DescriptionWid) // If too long
-      Then TempStrg :=  Copy( TempStrg, 1, DescriptionWid );
-      CurrDescrStr := TempStrg + StringOfChar( ' ', DescriptionWid - Length( TempStrg ) ); // Pad if needed
-
-      // Exactly fill the Footprint field
-      TempStrg := Trim( CurrPart.DM_Footprint );
-      If ( Length( TempStrg ) > FootprintWid) // If too long
-      Then TempStrg :=  Copy( TempStrg, 1, FootprintWid );
-      CurrFootprintStr := TempStrg + StringOfChar( ' ', FootprintWid - Length( TempStrg ) ); // Pad if needed
-
-      // Exactly fill the Physical Designator field
-      TempStrg := Trim( CurrPart.DM_PhysicalDesignator );
-      If ( Length( TempStrg ) > PhysicalDesWid) // If too long
-      Then TempStrg :=  Copy( TempStrg, 1, PhysicalDesWid );
-      CurrPhysDesStr := TempStrg + StringOfChar( ' ', PhysicalDesWid - Length( TempStrg ) ); // Pad if needed
-
-      // Exactly fill the Stuffed flag field
-      If Stuffed( CurrPart.DM_PhysicalDesignator )
-      Then CurrStuffedStr   := 'Y'
-      Else CurrStuffedStr   := 'N';
-
-      // Format the collected data
-      FormatStr :=
-      CurrLibRefStr
-      + CurrSortStr
-      + CurrDescrStr
-      + CurrFootprintStr
-      + CurrPhysDesStr
-      + CurrStuffedStr; }
-
-    // Add it to the string list
-    // CompList.Add := FormatStr;
-  End; // For CompIndex := 0 To CompCount - 1 Do
-
-  // Sort the string list (ASCII Ordered left to right)
-  // CompList.Sort;
-
-  // Record how many records ar in the list for later processing control
-  // CompListCount := CompList.Count;
-
-  // Hide Progress Bar
-  // ProgressBar.Visible  := False;
-
-  // _ss.SaveToFile(GetOutputFileNameWithExtension('.csv.txt'));
-  _ss.Free;
-
-End; // procedure FetchComponents( Dummy: Integer );
-
 Procedure InitializeProject(Dummy: Integer);
 Var
   ProjVarIndex: Integer; // Index for iterating through variants
@@ -1817,7 +1693,11 @@ Begin
     ReWriteActionLabel( 0 ); }
 End;
 
-procedure SetState_Controls;
+procedure SetState_Controls(Dummy: Integer);
+var
+  i: Integer;
+  tmpn: String;
+  ii: Integer;
 Begin
   LayerFilterCb.ItemIndex := LayerFilterIndex;
   FormatCb.ItemIndex := FormatIndex;
@@ -1830,6 +1710,24 @@ Begin
   TitleEdt.Text := Title;
   CompanyEdt.Text := Company;
   RevisionEdt.Text := Revision;
+  ValueParameterCb.ItemIndex := ValueParameterCb.Items.IndexOf
+    (ValueParameterName);
+  for i := 0 to ColumnsParametersNames.Count - 1 do
+  begin
+    if ColumnsParametersClb.Items.IndexOf(ColumnsParametersNames[i]) <> -1 then
+    begin
+      ColumnsParametersClb.Checked
+        [ColumnsParametersClb.Items.IndexOf(ColumnsParametersNames[i])] := True;
+    end;
+  end;
+  for i := 0 to GroupParametersNames.Count - 1 do
+  begin
+    if GroupParametersClb.Items.IndexOf(GroupParametersNames[i]) <> -1 then
+    begin
+      GroupParametersClb.Checked
+        [GroupParametersClb.Items.IndexOf(GroupParametersNames[i])] := True;
+    end;
+  end;
   /// //////////////////////////////////////////////////////////
   {
     ParametersComboBox          .ItemIndex := ParametersComboBox.Items.IndexOf(ParameterName);
@@ -1839,7 +1737,7 @@ End;
 
 Procedure SetState_FromParameters(AParametersList: String);
 Var
-  S: String;
+  s: String;
 Begin
   InitializeProject(0);
   {
@@ -1857,51 +1755,71 @@ Begin
   DarkMode := False;
   AddNets := False;
   AddTracks := False;
-  AddViasHoles := True;
   Highlighting1Pin := False;
   FabLayer := False;
   Title := 'Title';
   Company := 'Company';
   Revision := 'Revision: 1';
+  ValueParameterName := 'Value';
+  ColumnsParametersNames := TStringList.Create;
+  ColumnsParametersNames.Delimiter := ',';
+  ColumnsParametersNames.StrictDelimiter := True;
+  ColumnsParametersNames.Add('Value');
+  ColumnsParametersNames.Add('[Footprint]');
+
+  GroupParametersNames := TStringList.Create;
+  GroupParametersNames.Delimiter := ',';
+  GroupParametersNames.StrictDelimiter := True;
+  GroupParametersNames.Add('Value');
+  GroupParametersNames.Add('[Footprint]');
+
   {
     If GetState_Parameter(AParametersList, 'ParameterName'       , S) Then ParameterName        := S;
     If GetState_Parameter(AParametersList, 'VariantName'         , S) Then VariantName          := S;
   }
-  If GetState_Parameter(AParametersList, 'TargetFileName', S) Then
-    TargetFileName := S + '.PrjPcb';
-  If GetState_Parameter(AParametersList, 'TargetFolder', S) Then
-    TargetFolder := S;
-  If GetState_Parameter(AParametersList, 'TargetPrefix', S) Then
-    TargetPrefix := S;
-  If GetState_Parameter(AParametersList, 'LayerFilterIndex', S) Then
-    LayerFilterIndex := StrToInt(S);
-  If GetState_Parameter(AParametersList, 'FormatIndex', S) Then
-    FormatIndex := StrToInt(S);
-  If GetState_Parameter(AParametersList, 'FieldSeparatorIndex', S) Then
-    FieldSeparatorIndex := StrToInt(S);
-  If GetState_Parameter(AParametersList, 'PluginExecutable', S) Then
-    PluginExecutable := S;
-  If GetState_Parameter(AParametersList, 'DarkMode', S) Then
-    DarkMode := StringsEqual(S, 'True');
-  If GetState_Parameter(AParametersList, 'AddNets', S) Then
-    AddNets := StringsEqual(S, 'True');
-  If GetState_Parameter(AParametersList, 'AddTracks', S) Then
-    AddTracks := StringsEqual(S, 'True');
-  If GetState_Parameter(AParametersList, 'Highlighting1Pin', S) Then
-    Highlighting1Pin := StringsEqual(S, 'True');
-  If GetState_Parameter(AParametersList, 'FabLayer', S) Then
-    FabLayer := StringsEqual(S, 'True');
-  If GetState_Parameter(AParametersList, 'Title', S) Then
-    Title := S;
-  If GetState_Parameter(AParametersList, 'Company', S) Then
-    Company := S;
-  If GetState_Parameter(AParametersList, 'Revision', S) Then
-    Revision := S;
+  If GetState_Parameter(AParametersList, 'TargetFileName', s) Then
+    TargetFileName := s + '.PrjPcb';
+  If GetState_Parameter(AParametersList, 'TargetFolder', s) Then
+    TargetFolder := s;
+  If GetState_Parameter(AParametersList, 'TargetPrefix', s) Then
+    TargetPrefix := s;
+  If GetState_Parameter(AParametersList, 'LayerFilterIndex', s) Then
+    LayerFilterIndex := StrToInt(s);
+  If GetState_Parameter(AParametersList, 'FormatIndex', s) Then
+    FormatIndex := StrToInt(s);
+  If GetState_Parameter(AParametersList, 'FieldSeparatorIndex', s) Then
+    FieldSeparatorIndex := StrToInt(s);
+  If GetState_Parameter(AParametersList, 'PluginExecutable', s) Then
+    PluginExecutable := s;
+  If GetState_Parameter(AParametersList, 'DarkMode', s) Then
+    DarkMode := StringsEqual(s, 'True');
+  If GetState_Parameter(AParametersList, 'AddNets', s) Then
+    AddNets := StringsEqual(s, 'True');
+  If GetState_Parameter(AParametersList, 'AddTracks', s) Then
+    AddTracks := StringsEqual(s, 'True');
+  If GetState_Parameter(AParametersList, 'Highlighting1Pin', s) Then
+    Highlighting1Pin := StringsEqual(s, 'True');
+  If GetState_Parameter(AParametersList, 'FabLayer', s) Then
+    FabLayer := StringsEqual(s, 'True');
+  If GetState_Parameter(AParametersList, 'Title', s) Then
+    Title := s;
+  If GetState_Parameter(AParametersList, 'Company', s) Then
+    Company := s;
+  If GetState_Parameter(AParametersList, 'Revision', s) Then
+    Revision := s;
+  If GetState_Parameter(AParametersList, 'ValueParameterName', s) Then
+    ValueParameterName := s;
+  If GetState_Parameter(AParametersList, 'ColumnsParametersNames', s) Then
+    ColumnsParametersNames.DelimitedText := s;
+  If GetState_Parameter(AParametersList, 'GroupParametersNames', s) Then
+    GroupParametersNames.DelimitedText := s;
 
-  SetState_Controls;
+  SetState_Controls(0);
 End;
 
-procedure GetState_Controls;
+procedure GetState_Controls(Dummy: Integer);
+var
+  i: Integer;
 Begin
   {
     ParameterName         := ParametersComboBox.Items[ ParametersComboBox.ItemIndex ];
@@ -1918,13 +1836,25 @@ Begin
   Title := TitleEdt.Text;
   Company := CompanyEdt.Text;
   Revision := RevisionEdt.Text;
-
+  ValueParameterName := ValueParameterCb.Items[ValueParameterCb.ItemIndex];
+  ColumnsParametersNames.Clear;
+  for i := 0 to ColumnsParametersClb.Count - 1 do
+  begin
+    if ColumnsParametersClb.Checked[i] then
+      ColumnsParametersNames.Add(ColumnsParametersClb.Items[i]);
+  end;
+  GroupParametersNames.Clear;
+  for i := 0 to GroupParametersClb.Count - 1 do
+  begin
+    if GroupParametersClb.Checked[i] then
+      GroupParametersNames.Add(GroupParametersClb.Items[i]);
+  end;
   /// ////////////////////////////////////////////
 End;
 
-Function GetState_FromParameters: String;
+Function GetState_FromParameters(Dummy: Integer): String;
 Begin
-  GetState_Controls;
+  GetState_Controls(0);
 
   Result := '';
   { Result := Result +       'ParameterName='        + ParameterName;
@@ -1944,18 +1874,23 @@ Begin
   Result := Result + '|' + 'Title=' + Title;
   Result := Result + '|' + 'Company=' + Company;
   Result := Result + '|' + 'Revision=' + Revision;
+  Result := Result + '|' + 'ValueParameterName=' + ValueParameterName;
+  Result := Result + '|' + 'ColumnsParametersNames=' +
+    ColumnsParametersNames.DelimitedText;
+  Result := Result + '|' + 'GroupParametersNames=' +
+    GroupParametersNames.DelimitedText;
 End;
 
 procedure CreateFile(F: string);
 var
-  S: TStringList;
+  s: TStringList;
 begin
-  S := TStringList.Create;
-  S.SaveToFile(F);
-  S.Free;
+  s := TStringList.Create;
+  s.SaveToFile(F);
+  s.Free;
 end;
 
-function GetPluginExecutableFileName: String;
+function GetPluginExecutableFileName(Dummy: Integer): String;
 var
   i: Integer;
   Path: String;
@@ -1992,19 +1927,22 @@ var
   f2, f5, tmp, cfg: String;
 begin
   SetState_FromParameters(Parameters);
-  FetchComponents(0);
-  tmp := PickAndPlaceOutputEx;
+  tmp := PickAndPlaceOutputEx(FormatIndex < 2);
   if FormatIndex = 0 then
   begin
-    cfg := GenerConf();
+    cfg := GenerConf(0);
     Gener(tmp, cfg);
+  end
+  else if FormatIndex = 1 then
+  begin
+    Gener2(tmp, cfg);
   end
   else
   begin
-    Gener2(tmp, cfg);
+    Gener3(tmp, cfg);
   end;
   f2 := GetOutputFileNameWithExtension('.csv');
-  f5 := GetPluginExecutableFileName();
+  f5 := GetPluginExecutableFileName(0);
 end;
 
 Function PredictOutputFileNames(Parameters: String): String;
@@ -2020,6 +1958,75 @@ Begin
   Result := OutputFileNames.DelimitedText;
   OutputFileNames.Free;
 End;
+
+function foobar(Dummy: Integer): Integer;
+var
+  Board: IPCB_Board; // document board object
+  Component: IPCB_Component; // component object
+  Iterator: IPCB_BoardIterator;
+  ComponentIterator: IPCB_GroupIterator;
+  Pad: IPCB_Pad;
+  SMDcomponent: Boolean;
+  BoardUnits: String;
+  // Current unit string mm/mils
+  PnPout: TStringList;
+  Count: Integer;
+  FileName: TString;
+  Document: IServerDocument;
+  x, Y, Rotation, Layer, Net: TString;
+  pcbDocPath: TString;
+  flagRequirePcbDocFile: Boolean;
+  Separator: TString;
+  Iter, Prim: TObject;
+  PadsCount: Integer;
+  PadLayer, PadType: String;
+  PadX, PadY, PadAngle: TString;
+  X1, Y1, X2, Y2, _W, _H: Single;
+  Width, Height: String;
+  PadWidth, PadHeight, PadPin1: String;
+  PadShape, PadDrillShape: String;
+  PadDrillWidth, PadDrillHeight: String;
+  EdgeType: String;
+  EdgeWidth, EdgeHeight, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
+  ccc: IComponent;
+  xxx: String;
+  CurrParm: IParameter;
+  NoBOM: Boolean;
+  k: Integer;
+  CI1, CO1: TObject;
+  contour: IPCB_Contour;
+  kk: Integer;
+
+  _Document: IServerDocument;
+Begin
+  // Make sure the current Workspace opens or else quit this script
+  CurrWorkSpace := GetWorkSpace;
+  If (CurrWorkSpace = Nil) Then
+    Exit;
+
+  // Make sure the currently focussed Project in this Workspace opens or else
+  // quit this script
+  CurrProject := CurrWorkSpace.DM_FocusedProject;
+  If CurrProject = Nil Then
+    Exit;
+
+  flagRequirePcbDocFile := True;
+
+  FindProjectPcbDocFile(CurrProject, flagRequirePcbDocFile,
+    { var } pcbDocPath);
+
+  // TODO: Close
+  _Document := Client.OpenDocument('pcb', pcbDocPath);
+  Board := PCBServer.GetPCBBoardByPath(pcbDocPath);
+
+  If Not Assigned(Board) Then // check of active document
+  Begin
+    ShowMessage('The Current Document is not a PCB Document.');
+    Exit;
+  End;
+
+  GetParameters(Board);
+end;
 
 procedure LoadParameterNames(Dummy: Integer);
 Var
@@ -2039,6 +2046,9 @@ Begin
 
   FormatCb.Items.Add('HTML');
   FormatCb.Items.Add('JS');
+  FormatCb.Items.Add('JSON');
+
+  foobar(0);
 
   // FieldSeparatorCb.Items.Add(',');
   // FieldSeparatorCb.Items.Add(';');
@@ -2144,7 +2154,7 @@ Begin
   SetState_FromParameters(Parameters);
   If MainFrm.ShowModal = mrOK Then
   Begin
-    Result := GetState_FromParameters;
+    Result := GetState_FromParameters(0);
     Close;
   End;
 End;

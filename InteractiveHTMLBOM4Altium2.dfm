@@ -2,7 +2,7 @@ object MainFrm: TMainFrm
   Left = 0
   Top = 0
   Caption = 'InteractiveHTMLBOM'
-  ClientHeight = 244
+  ClientHeight = 416
   ClientWidth = 426
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
@@ -48,9 +48,23 @@ object MainFrm: TMainFrm
     Height = 13
     Caption = 'Revision'
   end
+  object Label6: TLabel
+    Left = 16
+    Top = 232
+    Width = 98
+    Height = 13
+    Caption = 'Columns parameters'
+  end
+  object Label7: TLabel
+    Left = 224
+    Top = 232
+    Width = 87
+    Height = 13
+    Caption = 'Group parameters'
+  end
   object Panel1: TPanel
     Left = 0
-    Top = 203
+    Top = 375
     Width = 426
     Height = 41
     Align = alBottom
@@ -158,12 +172,35 @@ object MainFrm: TMainFrm
     TabOrder = 10
   end
   object ValueParameterCb: TComboBox
-    Left = 248
-    Top = 168
+    Left = 112
+    Top = 200
     Width = 145
     Height = 21
     Style = csDropDownList
     TabOrder = 11
-    Visible = False
+  end
+  object ColumnsParametersClb: TCheckListBox
+    Left = 16
+    Top = 256
+    Width = 176
+    Height = 96
+    ItemHeight = 13
+    TabOrder = 12
+  end
+  object CheckBox1: TCheckBox
+    Left = 18
+    Top = 200
+    Width = 78
+    Height = 17
+    Caption = 'Add Tracks'
+    TabOrder = 13
+  end
+  object GroupParametersClb: TCheckListBox
+    Left = 224
+    Top = 256
+    Width = 176
+    Height = 96
+    ItemHeight = 13
+    TabOrder = 14
   end
 end

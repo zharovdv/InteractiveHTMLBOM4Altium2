@@ -74,7 +74,7 @@ function fromaltium(_data_) {
         //TODO: NoBOM<>Skipped looks like it DNP
         //bom.skipped.push(index);
         if (!item.NoBOM) {
-            var group = JSON.stringify([item.PartNumber, item.Footprint]);
+            var group = JSON.stringify(item.Group);
             if (item.Layer == "TopLayer") {
                 if (!(group in _F)) {
                     _F[group] = [];
@@ -93,15 +93,15 @@ function fromaltium(_data_) {
             _both[group].push([item.Designator, index]);
         }
 
-        bom.fields[index] = [item.PartNumber, item.Footprint];
+        bom.fields[index] = item.Fields;
 
         var footprint = {};
         footprint.bbox = {};
         footprint.bbox.angle = 0;
-        footprint.bbox.pos = [item.X * 1, item.Y * 1];
+        footprint.bbox.pos = [item.X, item.Y];
         footprint.bbox.relpos = [0, 0];//[-Math.round(item.Width / 2), -Math.round(item.Height / 2)];
         //footprint.bbox.size = [Math.round(item.Width), Math.round(item.Height)];
-        footprint.bbox.size = [item.Width * 1, item.Height * 1];
+        footprint.bbox.size = [item.Width, item.Height];
 
         footprint.drawings = [];
         if (item.Layer == "TopLayer") footprint.layer = "F";
@@ -113,22 +113,22 @@ function fromaltium(_data_) {
             var itemPad = item.Pads[key2];
 
             var pad = {};
-            pad.angle = itemPad.Angle * 1;
+            pad.angle = itemPad.Angle;
             if (itemPad.Type == "th") {
                 pad.drillshape = itemPad.DrillShape;
-                pad.drillsize = [itemPad.DrillWidth * 1, itemPad.DrillHeight * 1];
+                pad.drillsize = [itemPad.DrillWidth, itemPad.DrillHeight];
             }
             if (itemPad.Layer == "TopLayer") pad.layers = ["F"];
             if (itemPad.Layer == "BottomLayer") pad.layers = ["B"];
             if (itemPad.Layer == "MultiLayer") pad.layers = ["F", "B"];
             pad.offset = [0, 0];
             //pad.path2d = {};
-            if (itemPad.Pin1 == "1") {
+            if (itemPad.Pin1) {
                 pad.pin1 = itemPad.Pin1;
             }
-            pad.pos = [itemPad.X * 1, itemPad.Y * 1];
+            pad.pos = [itemPad.X, itemPad.Y];
             pad.shape = itemPad.Shape;
-            pad.size = [itemPad.Width * 1, itemPad.Height * 1];
+            pad.size = [itemPad.Width, itemPad.Height];
             pad.type = itemPad.Type;
             if (_data_.Settings.AddNets) {
                 //TODO: always true
@@ -170,19 +170,19 @@ function fromaltium(_data_) {
 
         if (item.Type == "segment") {
             var segment = {};
-            segment.end = [item.X2 * 1, item.Y2 * 1];
-            segment.start = [item.X1 * 1, item.Y1 * 1];
+            segment.end = [item.X2, item.Y2];
+            segment.start = [item.X1, item.Y1];
             segment.type = "segment";
             segment.width = item.Width;
         }
 
         if (item.Type == "arc") {
             var segment = {};
-            segment.start = [item.X * 1, item.Y * 1];
-            segment.endangle = item.Angle2 * 1;
-            segment.width = item.Width * 1;
-            segment.radius = item.Radius * 1;
-            segment.startangle = item.Angle1 * 1;
+            segment.start = [item.X, item.Y];
+            segment.endangle = item.Angle2;
+            segment.width = item.Width;
+            segment.radius = item.Radius;
+            segment.startangle = item.Angle1;
             segment.type = "arc";
         }
 
@@ -194,10 +194,10 @@ function fromaltium(_data_) {
 
         if (item.Type == "segment") {
             var segment = {};
-            segment.end = [item.X2 * 1, item.Y2 * 1];
-            segment.start = [item.X1 * 1, item.Y1 * 1];
+            segment.end = [item.X2, item.Y2];
+            segment.start = [item.X1, item.Y1];
             segment.type = "segment";
-            segment.width = item.Width * 1;
+            segment.width = item.Width;
 
             if (_data_.Settings.AddNets) {
                 if ((item.Layer == "TopLayer") || (item.Layer == "BottomLayer")) {
@@ -219,10 +219,11 @@ function fromaltium(_data_) {
         }
         if (item.Type == "via") {
             var segment = {};
-            segment.end = [item.X * 1, item.Y * 1];
-            segment.start = [item.X * 1, item.Y * 1];
+            segment.end = [item.X, item.Y];
+            segment.start = [item.X, item.Y];
             segment.type = "segment";
-            segment.width = item.Width * 1;
+            segment.width = item.Width;
+            segment.drillsize = item.DrillWidth;
 
             if (_data_.Settings.AddNets) {
                 if ((item.Layer == "TopLayer") || (item.Layer == "BottomLayer") || (item.Layer == "MultiLayer")) {
@@ -243,55 +244,14 @@ function fromaltium(_data_) {
                 tracks.F.push(segment);
                 tracks.B.push(segment);
             }
-
-            if (_data_.Settings.AddViasHoles) {
-                var footprint = {};
-                footprint.bbox = {};
-                footprint.bbox.angle = 0;
-                footprint.bbox.pos = [0, 0];
-                footprint.bbox.relpos = [0, 0];
-                footprint.bbox.size = [0, 0];
-
-                footprint.drawings = [];
-                //TODO: no matter
-                footprint.layer = "F";
-
-                footprint.pads = [];
-
-                var pad = {};
-                pad.angle = 0;
-                pad.drillshape = "circle";
-                pad.drillsize = [item.DrillWidth * 1, item.DrillWidth * 1];
-                if (item.Layer == "TopLayer") pad.layers = ["F"];
-                if (item.Layer == "BottomLayer") pad.layers = ["B"];
-                if (item.Layer == "MultiLayer") pad.layers = ["F", "B"];
-                pad.offset = [0, 0];
-                pad.pos = [item.X * 1, item.Y * 1];
-                pad.shape = "circle";
-                pad.size = [item.Width * 1, item.Width * 1];
-                pad.type = "th";
-                if (_data_.Settings.AddNets) {
-                    //TODO: always true
-                    pad.net = itemPad.Net;
-                    if (itemPad.Net != "") {
-                        if (!(itemPad.Net in _nets)) {
-                            _nets[itemPad.Net] = itemPad.Net;
-                            nets.push(itemPad.Net);
-                        }
-                    }
-                }
-
-                footprint.pads.push(pad);
-                footprints.push(footprint);
-            }
         }
         if (item.Type == "arc") {
             var segment = {};
-            segment.start = [item.X * 1, item.Y * 1];
-            segment.endangle = item.Angle2 * 1;
-            segment.width = item.Width * 1;
-            segment.radius = item.Radius * 1;
-            segment.startangle = item.Angle1 * 1;
+            segment.start = [item.X, item.Y];
+            segment.endangle = item.Angle2;
+            segment.width = item.Width;
+            segment.radius = item.Radius;
+            segment.startangle = item.Angle1;
             segment.type = "arc";
 
             if (item.Layer == "TopOverlay") drawings.silkscreen.F.push(segment);
@@ -299,14 +259,14 @@ function fromaltium(_data_) {
         }
         if (item.Type == "text") {
             var segment = {};
-            segment.angle = item.Angle * 1;
+            segment.angle = item.Angle;
             segment.attr = [];
             if (item.Mirrored) {
                 segment.attr.push("mirrored");
             }
-            segment.height = item.Height * 1;
+            segment.height = item.Height;
             segment.justify = [0, 0];
-            segment.pos = [item.X * 1, item.Y * 1];
+            segment.pos = [item.X, item.Y];
             if (item.Designator) {
                 segment.ref = 1;
             }
@@ -315,25 +275,25 @@ function fromaltium(_data_) {
             }
             segment.text = fixtext(item.Text, font_data);
             segment.thickness = 0.15;
-            segment.width = item.Width * 1;
+            segment.width = item.Width;
 
             if (item.Layer == "TopOverlay") drawings.silkscreen.F.push(segment);
             if (item.Layer == "BottomOverlay") drawings.silkscreen.B.push(segment);
         }
         if (item.Type == "polygon") {
             var segment = {};
-            //segment.end = [item.X2 * 1, item.Y2 * 1];
-            //segment.start = [item.X1 * 1, item.Y1 * 1];
+            //segment.end = [item.X2, item.Y2];
+            //segment.start = [item.X1, item.Y1];
             //segment.type = "polygon";
-            //segment.width = 1;//item.Width * 1;
+            //segment.width = 1;//item.Width;
 
 
             if ((item.Layer == "TopOverlay") || (item.Layer == "BottomOverlay")) {
-                //segment.end = [item.X2 * 1, item.Y2 * 1];
-                //segment.start = [item.X1 * 1, item.Y1 * 1];
+                //segment.end = [item.X2, item.Y2];
+                //segment.start = [item.X1, item.Y1];
                 segment.type = "polygon";
                 //"filled": 1,
-                //segment.width = 1;//item.Width * 1;
+                //segment.width = 1;//item.Width;
 
                 segment.angle = 0;
                 //segment.net: "No Net"
