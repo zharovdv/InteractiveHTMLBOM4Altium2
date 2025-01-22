@@ -409,7 +409,7 @@ begin
   stringList.Add('[Footprint]');
   argIterator := _pcbBoard.BoardIterator_Create();
   argIterator.AddFilter_ObjectSet(MkSet(eComponentObject));
-  // V6AllLayersSet
+
   argIterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
   argIterator.AddFilter_Method(eProcessAll);
   pcbPrimitive := argIterator.FirstPCBObject();
@@ -421,8 +421,7 @@ begin
       name := pcb_primitiveparametersIntf.GetParameterByIndex(argIndex)
         .GetName();
 
-      // if (name != null && !stringList.Contains(name))
-      // if name<>nil then
+
       begin
         stringList.Add(name);
       end;
@@ -448,8 +447,6 @@ var
 begin
   stateText := comp.GetState_Name().GetState_Text();
   str1 := comp.GetState_SourceCompDesignItemID();
-  // if (string.IsNullOrEmpty(str1))
-  // str1 = "";
   paramsComponent := TStringList.Create;
   paramsComponent.Add('[DesignItemID]' + '=' + str1);
   paramsComponent.Add('[Footprint]' + '=' + comp.GetState_Pattern());
@@ -466,8 +463,6 @@ begin
         (argIndex);
       name := parameterByIndex.GetName();
       value := parameterByIndex.GetValue();
-      // if (!string.IsNullOrEmpty(name)) then
-      // paramsComponent[name] := parameterByIndex.GetValue();
       paramsComponent.Add(name + '=' + value);
     end;
   end;
@@ -502,25 +497,477 @@ begin
   Result := s;
 end;
 
-function PickAndPlaceOutputEx(Dummy: Boolean): String;
+function ParseArc(Board: IPCB_Board; Prim: TObject): String;
 var
-  Board: IPCB_Board; // document board object
-  Component: IPCB_Component; // component object
-  Iterator: IPCB_BoardIterator;
-  ComponentIterator: IPCB_GroupIterator;
-  Pad: IPCB_Pad;
-  SMDcomponent: Boolean;
-  BoardUnits: String;
-  // Current unit string mm/mils
   PnPout: TStringList;
-  Count: Integer;
-  FileName: TString;
-  Document: IServerDocument;
-  x, Y, Rotation, Layer, Net: TString;
-  pcbDocPath: TString;
-  flagRequirePcbDocFile: Boolean;
-  Separator: TString;
-  Iter, Prim: TObject;
+  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
+  EdgeType: String;
+begin
+  PnPout := TStringList.Create;
+  // ;{edges.push(parseArc(Prim));}
+  EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.LineWidth));
+  EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.XCenter - Board.XOrigin));
+  EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.YCenter - Board.YOrigin));
+  EdgeX2 := JSONFloatToStr(-Prim.EndAngle);
+  EdgeY2 := JSONFloatToStr(-Prim.StartAngle);
+  EdgeRadius := JSONFloatToStr(CoordToMMs(Prim.Radius));
+
+  EdgeType := 'arc';
+  PnPout.Add('{');
+  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
+  PnPout.Add('"Width":' + (EdgeWidth) + ',');
+  PnPout.Add('"X":' + (EdgeX1) + ',');
+  PnPout.Add('"Y":' + (EdgeY1) + ',');
+  PnPout.Add('"Angle1":' + (EdgeX2) + ',');
+  PnPout.Add('"Angle2":' + (EdgeY2) + ',');
+  PnPout.Add('"Radius":' + (EdgeRadius));
+  PnPout.Add('}');
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParseTrack(Board: IPCB_Board; Prim: TObject): String;
+var
+  PnPout: TStringList;
+  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
+  EdgeType: String;
+begin
+  PnPout := TStringList.Create;
+  // JSONPush(edges,parseTrack(Prim));
+  {
+    var start = [CoordToMMs(Prim.x1).round(), -CoordToMMs(Prim.y1).round()];
+    var end = [CoordToMMs(Prim.x2).round(), -CoordToMMs(Prim.y2).round()];
+    res["layer"] = Prim.Layer;
+    if (Prim.InPolygon)
+    res["type"] = "polygon";
+    res["svgpath"] = ["M", start, "L", end].join(" ");
+    else             res["type"] = "segment";
+    res["start"] = start;
+    res["end"] = end;
+    res["width"] = CoordToMMs(Prim.Width).round();
+  }
+
+  EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.Width));
+  EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.X1 - Board.XOrigin));
+  EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.Y1 - Board.YOrigin));
+  EdgeX2 := JSONFloatToStr(CoordToMMs(Prim.X2 - Board.XOrigin));
+  EdgeY2 := JSONFloatToStr(-CoordToMMs(Prim.Y2 - Board.YOrigin));
+
+  EdgeType := 'segment';
+  PnPout.Add('{');
+  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
+  PnPout.Add('"Width":' + (EdgeWidth) + ',');
+  PnPout.Add('"X1":' + (EdgeX1) + ',');
+  PnPout.Add('"Y1":' + (EdgeY1) + ',');
+  PnPout.Add('"X2":' + (EdgeX2) + ',');
+  PnPout.Add('"Y2":' + (EdgeY2));
+
+  PnPout.Add('}');
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParseText(Board: IPCB_Board; Prim: TObject): String;
+var
+  PnPout: TStringList;
+  Layer: String;
+  X1, Y1, X2, Y2, _W, _H: Single;
+  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeHeight: String;
+  EdgeType: String;
+begin
+  PnPout := TStringList.Create;
+
+  If (Prim.Layer = eTopOverlay) Then
+    Layer := 'TopOverlay'
+  Else If (Prim.Layer = eBottomOverlay) Then
+    Layer := 'BottomOverlay'
+  Else If (Prim.Layer = eTopLayer) Then
+    Layer := 'TopLayer'
+  Else If (Prim.Layer = eBottomLayer) Then
+    Layer := 'BottomLayer';
+
+  // X1 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Left- Board.XOrigin);
+  // Y1 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Bottom- Board.YOrigin);
+  // X2 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Right- Board.XOrigin);
+  // Y2 :=CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Top- Board.YOrigin);
+
+  // var x0, y0, x1, y1;
+  X1 := CoordToMMs(Prim.BoundingRectangleForSelection.Left - Board.XOrigin);
+  Y1 := CoordToMMs(Prim.BoundingRectangleForSelection.Bottom - Board.YOrigin);
+  X2 := CoordToMMs(Prim.BoundingRectangleForSelection.Right - Board.XOrigin);
+  Y2 := CoordToMMs(Prim.BoundingRectangleForSelection.Top - Board.YOrigin);
+
+  _W := X2 - X1;
+  _H := Y2 - Y1;
+
+  EdgeX1 := JSONFloatToStr(X1 + _W / 2);
+  EdgeY1 := JSONFloatToStr(-(Y1 + _H / 2));
+
+  // bbox["size"] = [(x1 - x0).round(), (y1 - y0).round()];
+
+  // bbox["center"] = [(x0 + bbox.size[0] / 2).round(), -(y0 + bbox.size[1] / 2).round()];
+
+  EdgeX2 := JSONFloatToStr(Prim.Rotation);
+
+  if (Prim.TextKind = 0) then
+  begin
+    // res["thickness"] = CoordToMMs(Prim.Width).round();
+    EdgeHeight := JSONFloatToStr(CoordToMMs(Prim.Size));
+    EdgeWidth := EdgeHeight; // single char's width in kicad
+  end
+  else if (Prim.TextKind = 1) then
+  begin
+    EdgeHeight := JSONFloatToStr(CoordToMMs(Prim.TTFTextHeight * 0.6));
+    EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.TTFTextWidth * 0.9 /
+      Length(Prim.Text)));
+    // res["thickness"] = CoordToMMs(res["height"] * 0.1);
+  end;
+
+  EdgeType := 'text';
+  PnPout.Add('{');
+  PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
+  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
+  // PnPout.Add('"Width":'+'"'+Preprocess(EdgeWidth)+'"'+',');
+  PnPout.Add('"X":' + (EdgeX1) + ',');
+  PnPout.Add('"Y":' + (EdgeY1) + ',');
+  PnPout.Add('"Width":' + (EdgeWidth) + ',');
+  PnPout.Add('"Height":' + (EdgeHeight) + ',');
+  PnPout.Add('"Angle":' + (EdgeX2) + ',');
+  // PnPout.Add('"Angle2":'+'"'+Preprocess(EdgeY2)+'"'+',');
+  PnPout.Add('"Mirrored":' + JSONBoolToStr(Prim.MirrorFlag) + ',');
+  PnPout.Add('"Designator":' + JSONBoolToStr(Prim.IsDesignator) + ',');
+  PnPout.Add('"Value":' + JSONBoolToStr(Prim.IsComment) + ',');
+  PnPout.Add('"Text":' + JSONStrToStr(Prim.Text));
+  PnPout.Add('}');
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParseArc2(Board: IPCB_Board; Prim: TObject): String;
+var
+  PnPout: TStringList;
+  Layer: String;
+  // X1, Y1, X2, Y2, _W, _H: Single;
+  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
+  EdgeType: String;
+begin
+  PnPout := TStringList.Create;
+  // ;{edges.push(parseArc(Prim));}
+
+  // res["type"] = "arc";
+  // res["width"] = width;
+  // res["startangle"] = -Prim.EndAngle.round();
+  // res["endangle"] = -Prim.StartAngle.round();
+  // res["start"] = [CoordToMMs(Prim.XCenter).round(), -CoordToMMs(Prim.YCenter).round()];
+
+  EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.LineWidth));
+  EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.XCenter - Board.XOrigin));
+  EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.YCenter - Board.YOrigin));
+  EdgeX2 := JSONFloatToStr(-Prim.EndAngle);
+  EdgeY2 := JSONFloatToStr(-Prim.StartAngle);
+  EdgeRadius := JSONFloatToStr(CoordToMMs(Prim.Radius));
+
+  If (Prim.Layer = eTopOverlay) Then
+    Layer := 'TopOverlay'
+  Else If (Prim.Layer = eBottomOverlay) Then
+    Layer := 'BottomOverlay'
+  Else If (Prim.Layer = eTopLayer) Then
+    Layer := 'TopLayer'
+  Else If (Prim.Layer = eBottomLayer) Then
+    Layer := 'BottomLayer';
+
+  EdgeType := 'arc';
+  PnPout.Add('{');
+  PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
+  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
+  PnPout.Add('"Width":' + (EdgeWidth) + ',');
+  PnPout.Add('"X":' + (EdgeX1) + ',');
+  PnPout.Add('"Y":' + (EdgeY1) + ',');
+  PnPout.Add('"Angle1":' + (EdgeX2) + ',');
+  PnPout.Add('"Angle2":' + (EdgeY2) + ',');
+  PnPout.Add('"Radius":' + (EdgeRadius));
+  PnPout.Add('}');
+
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParseTrack2(Board: IPCB_Board; Prim: TObject): String;
+var
+  PnPout: TStringList;
+  Layer: String;
+  // X1, Y1, X2, Y2, _W, _H: Single;
+  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeHeight: String;
+  EdgeType: String;
+  Net: String;
+begin
+  PnPout := TStringList.Create;
+
+  // JSONPush(edges,parseTrack(Prim));
+  {
+    var start = [CoordToMMs(Prim.x1).round(), -CoordToMMs(Prim.y1).round()];
+    var end = [CoordToMMs(Prim.x2).round(), -CoordToMMs(Prim.y2).round()];
+    res["layer"] = Prim.Layer;
+    if (Prim.InPolygon)
+    res["type"] = "polygon";
+    res["svgpath"] = ["M", start, "L", end].join(" ");
+    else             res["type"] = "segment";
+    res["start"] = start;
+    res["end"] = end;
+    res["width"] = CoordToMMs(Prim.Width).round();
+  }
+
+  EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.Width));
+  EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.X1 - Board.XOrigin));
+  EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.Y1 - Board.YOrigin));
+  EdgeX2 := JSONFloatToStr(CoordToMMs(Prim.X2 - Board.XOrigin));
+  EdgeY2 := JSONFloatToStr(-CoordToMMs(Prim.Y2 - Board.YOrigin));
+
+  If (Prim.Layer = eTopOverlay) Then
+    Layer := 'TopOverlay'
+  Else If (Prim.Layer = eBottomOverlay) Then
+    Layer := 'BottomOverlay'
+  Else If (Prim.Layer = eTopLayer) Then
+    Layer := 'TopLayer'
+  Else If (Prim.Layer = eBottomLayer) Then
+    Layer := 'BottomLayer';
+  Net := 'No Net';
+  if Prim.Net <> nil then
+    Net := Prim.Net.name;
+
+  EdgeType := 'segment';
+  PnPout.Add('{');
+  PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
+  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
+  PnPout.Add('"Width":' + (EdgeWidth) + ',');
+  PnPout.Add('"X1":' + (EdgeX1) + ',');
+  PnPout.Add('"Y1":' + (EdgeY1) + ',');
+  PnPout.Add('"X2":' + (EdgeX2) + ',');
+  PnPout.Add('"Y2":' + (EdgeY2) + ',');
+  PnPout.Add('"Net":' + JSONStrToStr(Net));
+  PnPout.Add('}');
+
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParseVIA(Board: IPCB_Board; Prim: TObject): String;
+var
+  PnPout: TStringList;
+  Layer, Net: String;
+  // X1, Y1, X2, Y2, _W, _H: Single;
+  EdgeWidth, EdgeX1, EdgeY1, PadDrillWidth: String;
+  EdgeType: String;
+begin
+  PnPout := TStringList.Create;
+
+  // TODO: Layers
+  EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.Size));
+  EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.x - Board.XOrigin));
+  EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.Y - Board.YOrigin));
+  PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+
+  If (Prim.Layer = eTopOverlay) Then
+    Layer := 'TopOverlay'
+  Else If (Prim.Layer = eBottomOverlay) Then
+    Layer := 'BottomOverlay'
+  Else If (Prim.Layer = eTopLayer) Then
+    Layer := 'TopLayer'
+  Else If (Prim.Layer = eBottomLayer) Then
+    Layer := 'BottomLayer'
+  Else If (Prim.Layer = eMultiLayer) Then
+    Layer := 'MultiLayer';
+  Net := 'No Net';
+  if Prim.Net <> nil then
+    Net := Prim.Net.name;
+
+  EdgeType := 'via';
+  PnPout.Add('{');
+  PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
+  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
+  PnPout.Add('"Width":' + JSONStrToStr(EdgeWidth) + ',');
+  PnPout.Add('"X":' + (EdgeX1) + ',');
+  PnPout.Add('"Y":' + (EdgeY1) + ',');
+  PnPout.Add('"DrillWidth":' + (PadDrillWidth) + ',');
+  PnPout.Add('"Net":' + JSONStrToStr(Net));
+  PnPout.Add('}');
+
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParseRegion(Board: IPCB_Board; Prim: TObject): String;
+var
+  PnPout: TStringList;
+  Layer, Net: String;
+  // X1, Y1, X2, Y2, _W, _H: Single;
+  // EdgeWidth, EdgeX1, EdgeY1, PadDrillWidth: String;
+  EdgeX1, EdgeY1: String;
+  EdgeType: String;
+  k: Integer;
+  CI1, CO1: TObject;
+  contour: IPCB_Contour;
+  kk: Integer;
+begin
+  PnPout := TStringList.Create;
+
+  If (Prim.Layer = eTopOverlay) Then
+    Layer := 'TopOverlay'
+  Else If (Prim.Layer = eBottomOverlay) Then
+    Layer := 'BottomOverlay'
+  Else If (Prim.Layer = eTopLayer) Then
+    Layer := 'TopLayer'
+  Else If (Prim.Layer = eBottomLayer) Then
+    Layer := 'BottomLayer';
+  Net := 'No Net';
+  if Prim.Net <> nil then
+    Net := Prim.Net.name;
+
+  EdgeType := 'polygon';
+  PnPout.Add('{');
+  PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
+  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
+  PnPout.Add('"Net":' + JSONStrToStr(Net) + ',');
+  PnPout.Add('"Points": [');
+  PnPout.Add('],');
+  // PnPout.Add('}');
+
+  k := 0;
+
+  PnPout.Add('"EX": [');
+
+  // CI1 := Prim.GroupIterator_Create;
+  // CI1.AddFilter_ObjectSet(MkSet(ePadObject));
+  // CO1 := CI1.FirstPCBObject;
+  // While (CO1 <> Nil) Do
+  CO1 := Prim;
+
+  // if (CO1<>nil) then
+  begin
+    if CO1.ObjectId = eRegionObject then
+    begin
+      Inc(k);
+      If (k > 1) Then
+        PnPout.Add(',');
+      PnPout.Add('[');
+      contour := CO1.GetMainContour();
+      for kk := 0 to contour.Count do
+      begin
+        If (kk > 0) Then
+          PnPout.Add(',');
+        EdgeX1 := JSONFloatToStr
+          (CoordToMMs(contour.GetState_PointX(kk mod contour.Count) -
+          Board.XOrigin));
+        EdgeY1 := JSONFloatToStr
+          (-CoordToMMs(contour.GetState_PointY(kk mod contour.Count) -
+          Board.YOrigin));
+        PnPout.Add('[');
+        PnPout.Add(EdgeX1 + ',');
+        PnPout.Add(EdgeY1);
+        PnPout.Add(']');
+      end;
+      PnPout.Add(']');
+    end;
+    // CO1 := CI1.NextPCBObject;
+  end;
+  // Prim.GroupIterator_Destroy(CI1);
+
+  PnPout.Add(']');
+
+  PnPout.Add('}');
+
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParsePoly(Board: IPCB_Board; Prim: TObject): String;
+var
+  PnPout: TStringList;
+  Layer, Net: String;
+  // X1, Y1, X2, Y2, _W, _H: Single;
+  // EdgeWidth, EdgeX1, EdgeY1, PadDrillWidth: String;
+  EdgeX1, EdgeY1: String;
+  EdgeType: String;
+  k: Integer;
+  CI1, CO1: TObject;
+  contour: IPCB_Contour;
+  kk: Integer;
+begin
+  PnPout := TStringList.Create;
+
+  If (Prim.Layer = eTopOverlay) Then
+    Layer := 'TopOverlay'
+  Else If (Prim.Layer = eBottomOverlay) Then
+    Layer := 'BottomOverlay'
+  Else If (Prim.Layer = eTopLayer) Then
+    Layer := 'TopLayer'
+  Else If (Prim.Layer = eBottomLayer) Then
+    Layer := 'BottomLayer';
+  Net := 'No Net';
+  if Prim.Net <> nil then
+    Net := Prim.Net.name;
+
+  EdgeType := 'polygon';
+  PnPout.Add('{');
+  PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
+  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
+  PnPout.Add('"Net":' + JSONStrToStr(Net) + ',');
+  PnPout.Add('"Points": [');
+  PnPout.Add('],');
+  // PnPout.Add('}');
+
+  k := 0;
+
+  PnPout.Add('"EX": [');
+
+  CI1 := Prim.GroupIterator_Create;
+  // CI1.AddFilter_ObjectSet(MkSet(ePadObject));
+  CO1 := CI1.FirstPCBObject;
+  While (CO1 <> Nil) Do
+  begin
+    if CO1.ObjectId = eRegionObject then
+    begin
+      Inc(k);
+      If (k > 1) Then
+        PnPout.Add(',');
+      PnPout.Add('[');
+      contour := CO1.GetMainContour();
+      for kk := 0 to contour.Count do
+      begin
+        If (kk > 0) Then
+          PnPout.Add(',');
+        EdgeX1 := JSONFloatToStr
+          (CoordToMMs(contour.GetState_PointX(kk mod contour.Count) -
+          Board.XOrigin));
+        EdgeY1 := JSONFloatToStr
+          (-CoordToMMs(contour.GetState_PointY(kk mod contour.Count) -
+          Board.YOrigin));
+        PnPout.Add('[');
+        PnPout.Add(EdgeX1 + ',');
+        PnPout.Add(EdgeY1);
+        PnPout.Add(']');
+      end;
+      PnPout.Add(']');
+    end;
+    CO1 := CI1.NextPCBObject;
+  end;
+  Prim.GroupIterator_Destroy(CI1);
+
+  PnPout.Add(']');
+
+  PnPout.Add('}');
+
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParsePad(Board: IPCB_Board; Prim, Pad: TObject): String;
+var
+  PnPout: TStringList;
+  // Layer, Net: String;
+  // X1, Y1, X2, Y2, _W, _H: Single;
+  // EdgeWidth, EdgeX1, EdgeY1, PadDrillWidth: String;
+  // EdgeType: String;
   PadsCount: Integer;
   PadLayer, PadType: String;
   PadX, PadY, PadAngle: TString;
@@ -530,24 +977,338 @@ var
   PadPin1: Boolean;
   PadShape, PadDrillShape: String;
   PadDrillWidth, PadDrillHeight: String;
-  EdgeType: String;
-  EdgeWidth, EdgeHeight, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
-  ccc: IComponent;
-  xxx: String;
+  Net: String;
+begin
+  PnPout := TStringList.Create;
+
+  PnPout.Add('{');
+
+  // TODO: Not sure
+  PadType := Pad.Layer;
+  if (Pad.Layer = eTopLayer) then
+  begin
+    PadLayer := 'TopLayer';
+    PadType := 'smd';
+    PadWidth := FloatToStr(CoordToMMs(Pad.TopXSize));
+    PadHeight := FloatToStr(CoordToMMs(Pad.TopYSize));
+
+    PadShape := 'circle';
+    case (Pad.TopShape) of
+      1:
+        begin
+          if PadWidth = PadHeight then
+            PadShape := 'circle'
+          else
+            PadShape := 'oval';
+          // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
+        end;
+      2:
+        PadShape := 'rect';
+      // 3:PadShape :='chamfrect';
+      9:
+        PadShape := 'roundrect';
+      // default:
+      // res['shape'] :='custom';
+    end;
+  end
+  else if (Pad.Layer = eBottomLayer) then
+  begin
+    PadLayer := 'BottomLayer';
+    PadType := 'smd';
+    PadWidth := FloatToStr(CoordToMMs(Prim.BotXSize));
+    PadHeight := FloatToStr(CoordToMMs(Prim.BotYSize));
+    PadShape := 'circle';
+    case (Pad.BotShape) of
+      1:
+        begin
+          if PadWidth = PadHeight then
+            PadShape := 'circle'
+          else
+            PadShape := 'oval';
+          // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
+        end;
+      2:
+        PadShape := 'rect';
+      // 3:PadShape :='chamfrect';
+      9:
+        PadShape := 'roundrect';
+      // default:
+      // res['shape'] :='custom';
+    end;
+  end
+  else
+  begin
+    PadLayer := 'MultiLayer';
+    PadType := 'th';
+    PadWidth := FloatToStr(CoordToMMs(Prim.TopXSize));
+    PadHeight := FloatToStr(CoordToMMs(Prim.TopYSize));
+    // TODO: Is it norm?
+    PadShape := 'circle';
+    case (Pad.TopShape) of
+      1:
+        begin
+          if PadWidth = PadHeight then
+            PadShape := 'circle'
+          else
+            PadShape := 'oval';
+          // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
+        end;
+      // 3:PadShape :='chamfrect';
+      9:
+        PadShape := 'roundrect';
+      // default:
+      // res['shape'] :='custom';
+    end;
+    case (Pad.BotShape) of
+      1:
+        begin
+          if PadWidth = PadHeight then
+            PadShape := 'circle'
+          else
+            PadShape := 'oval';
+          // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
+        end;
+      2:
+        PadShape := 'rect';
+      // 3:PadShape :='chamfrect';
+      9:
+        PadShape := 'roundrect';
+      // default:
+      // res['shape'] :='custom';
+    end;
+
+    case (Pad.HoleType) of
+      0: // circle
+        begin
+          // res["drillsize"] = [CoordToMMs(Prim.HoleSize).round(), CoordToMMs(Prim.HoleSize).round()];
+          PadDrillShape := 'circle';
+          PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+          PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+        end;
+      1: // square, but not supported in kicad, so do as circle
+        begin
+          // res["drillsize"] = [CoordToMMs(Prim.HoleSize).round(), CoordToMMs(Prim.HoleSize).round()];
+          PadDrillShape := 'rect';
+          PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleWidth));
+          PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+        end;
+      2: // slot
+        begin
+          // res["drillsize"] = [CoordToMMs(Prim.HoleWidth).round(), CoordToMMs(Prim.HoleSize).round()];
+          PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleWidth));
+          PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+          PadDrillShape := 'oblong';
+        end;
+      // default:  //
+    end;
+
+  end;
+
+  PadPin1 := False;
+  if (Pad.name = '1') then
+  // if ("A1".indexOf(Pad.Name) != -1) then
+  begin
+    PadPin1 := True;
+  end;
+
+  PadWidth := StringReplace(PadWidth, ',', '.',
+    MkSet(rfReplaceAll, rfIgnoreCase));
+  PadHeight := StringReplace(PadHeight, ',', '.',
+    MkSet(rfReplaceAll, rfIgnoreCase));
+
+  PadX := JSONFloatToStr(CoordToMMs(Pad.x - Board.XOrigin));
+  PadY := JSONFloatToStr(-CoordToMMs(Pad.Y - Board.YOrigin));
+
+  PadAngle := JSONFloatToStr(Pad.Rotation);
+
+  Net := 'No Net';
+  if Prim.Net <> nil then
+    Net := Prim.Net.name;
+
+  PnPout.Add('"Layer":' + JSONStrToStr(PadLayer) + ',');
+  PnPout.Add('"Type":' + JSONStrToStr(PadType) + ',');
+  PnPout.Add('"Shape":' + JSONStrToStr(PadShape) + ',');
+  if PadType = 'th' then
+  begin
+    PnPout.Add('"DrillShape":' + JSONStrToStr(PadDrillShape) + ',');
+    PnPout.Add('"DrillWidth":' + (PadDrillWidth) + ',');
+    PnPout.Add('"DrillHeight":' + (PadDrillHeight) + ',');
+  end;
+  // PnPout.Add('"Debug":'+'"'+Preprocess(Prim.Layer)+'"'+',');
+  PnPout.Add('"X":' + (PadX) + ',');
+  PnPout.Add('"Y":' + (PadY) + ',');
+  PnPout.Add('"Width":' + (PadWidth) + ',');
+  PnPout.Add('"Height":' + (PadHeight) + ',');
+  PnPout.Add('"Angle":' + (PadAngle) + ',');
+  PnPout.Add('"Pin1":' + JSONBoolToStr(PadPin1) + ',');
+  PnPout.Add('"Net":' + JSONStrToStr(Net));
+
+  PnPout.Add('}');
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParseComponent(Board: IPCB_Board; Component: TObject;
+  purpur, purpur2: TStringList; NoBOM: Boolean): String;
+var
+  PnPout: TStringList;
+  Iterator: IPCB_BoardIterator;
+  ComponentIterator: IPCB_GroupIterator;
+
+  Pad: IPCB_Pad;
+
+  x, Y, Rotation, Layer, Net: TString;
+
+  Iter, Prim: TObject;
+  PadsCount: Integer;
+  X1, Y1, X2, Y2, _W, _H: Single;
+  Width, Height: String;
+
+  sl: TStringList;
+  hhhhi: Integer;
+  hhhh: String;
+begin
+  PnPout := TStringList.Create;
+
+  If (Component.Layer = eTopLayer) Then
+    Layer := 'TopLayer'
+  Else
+    Layer := 'BottomLayer';
+  x := JSONFloatToStr(CoordToMMs(Component.x - Board.XOrigin));
+  Y := JSONFloatToStr(-CoordToMMs(Component.Y - Board.YOrigin));
+  Rotation := IntToStr(Component.Rotation);
+
+  // TODO: Is it correct? X1,Y1 vs X,Y
+  X1 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Left -
+    Board.XOrigin);
+  Y1 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Bottom -
+    Board.YOrigin);
+  X2 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Right -
+    Board.XOrigin);
+  Y2 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Top -
+    Board.YOrigin);
+
+  Width := JSONFloatToStr(X2 - X1);
+  Height := JSONFloatToStr(Y2 - Y1);
+
+  x := StringReplace(FloatToStr(X1), ',', '.',
+    MkSet(rfReplaceAll, rfIgnoreCase));
+  Y := StringReplace(FloatToStr(-Y2), ',', '.',
+    MkSet(rfReplaceAll, rfIgnoreCase));
+
+  {
+    bbox['pos'] :=[x0.round(), -y1.round()]; //
+    bbox['relpos'] :=[0, 0];
+    bbox['angle'] :=0;
+    bbox['size'] :=[(x1 - x0).round(), (y1 - y0).round()];
+    bbox['center'] :=[(x0 + bbox.size[0] / 2).round(), -(y0 + bbox.size[1] / 2).round()];
+  }
+
+  PnPout.Add('{');
+
+  PnPout.Add('"Designator":' + JSONStrToStr(Component.SourceDesignator) + ',');
+  PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
+  PnPout.Add('"Footprint":' + JSONStrToStr(Component.Pattern) + ',');
+
+  sl := getparamc(Component);
+
+  PnPout.Add('"PartNumber":' + JSONStrToStr
+    (sl.Values[ValueParameterName]) + ',');
+  PnPout.Add('"Value":' + JSONStrToStr(sl.Values[ValueParameterName]) + ',');
+
+  PnPout.Add('"Fields":' + '[');
+
+  for hhhhi := 0 to purpur.Count - 1 do
+  begin
+    if (hhhhi > 0) then
+      PnPout.Add(',');
+    hhhh := purpur[hhhhi];
+    PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
+  end;
+  PnPout.Add('],');
+
+  PnPout.Add('"Group":' + '[');
+
+  for hhhhi := 0 to purpur2.Count - 1 do
+  begin
+    if (hhhhi > 0) then
+      PnPout.Add(',');
+    hhhh := purpur2[hhhhi];
+    PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
+  end;
+  PnPout.Add('],');
+
+  PnPout.Add('"X":' + (x) + ',');
+  PnPout.Add('"Y":' + (Y) + ',');
+  PnPout.Add('"Width":' + (Width) + ',');
+  PnPout.Add('"Height":' + (Height) + ',');
+  PnPout.Add('"NoBOM":' + JSONBoolToStr(NoBOM) + ',');
+
+  PnPout.Add('"Pads":' + '[');
+
+  PadsCount := 0;
+  Iter := Component.GroupIterator_Create;
+  Iter.AddFilter_ObjectSet(MkSet(ePadObject));
+  Iter.AddFilter_LayerSet(AllLayers);
+  Prim := Iter.FirstPCBObject;
+  while (Prim <> nil) do
+  begin
+    Pad := Prim;
+    Inc(PadsCount);
+    If (PadsCount > 1) Then
+      PnPout.Add(',');
+
+    PnPout.Add(ParsePad(Board, Prim, Pad));
+
+    // pads :=pads.concat(parsePad(Prim));
+    // if (isSMD and (Prim.Layer = eMultiLayer)) then begin
+    // isSMD :=false;
+    // end;
+    Prim := Iter.NextPCBObject;
+  end;
+  Component.GroupIterator_Destroy(Iter);
+
+  PnPout.Add(']');
+
+  PnPout.Add('}');
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function PickAndPlaceOutputEx(Dummy: Boolean): String;
+var
+  Board: IPCB_Board; // document board object
+  Component: IPCB_Component; // component object
+  Iterator: IPCB_BoardIterator;
+  SMDcomponent: Boolean;
+  BoardUnits: String;
+  // Current unit string mm/mils
+  PnPout: TStringList;
+  Count: Integer;
+  FileName: TString;
+  Document: IServerDocument;
+  pcbDocPath: TString;
+  flagRequirePcbDocFile: Boolean;
+  Separator: TString;
+  Iter, Prim: TObject;
+  PadsCount: Integer;
+  X1, Y1, X2, Y2, _W, _H: Single;
+  Width, Height: String;
   CurrParm: IParameter;
   NoBOM: Boolean;
-  k: Integer;
-  CI1, CO1: TObject;
-  contour: IPCB_Contour;
-  kk: Integer;
+  ccc: IComponent;
+
+  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
 
   _Document: IServerDocument;
-  sl: TStringList;
+  // sl: TStringList;
   tmpx, tmpy: String;
   purpur: TStringList;
   purpur2: TStringList;
   hhhhi: Integer;
   hhhh: String;
+  StartTime, StopTime: TDateTime;
+  Elapsed: Integer;
 Begin
   // Make sure the current Workspace opens or else quit this script
   CurrWorkSpace := GetWorkSpace;
@@ -574,6 +1335,8 @@ Begin
     ShowMessage('The Current Document is not a PCB Document.');
     Exit;
   End;
+
+  StartTime := Now();
 
   GetParameters(Board);
 
@@ -619,269 +1382,8 @@ Begin
         Inc(Count);
         If (Count > 1) Then
           PnPout.Add(',');
-        If (Component.Layer = eTopLayer) Then
-          Layer := 'TopLayer'
-        Else
-          Layer := 'BottomLayer';
-        x := JSONFloatToStr(CoordToMMs(Component.x - Board.XOrigin));
-        Y := JSONFloatToStr(-CoordToMMs(Component.Y - Board.YOrigin));
-        Rotation := IntToStr(Component.Rotation);
 
-        // TODO: Is it correct? X1,Y1 vs X,Y
-        X1 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Left
-          - Board.XOrigin);
-        Y1 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.
-          Bottom - Board.YOrigin);
-        X2 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.
-          Right - Board.XOrigin);
-        Y2 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Top
-          - Board.YOrigin);
-
-        Width := JSONFloatToStr(X2 - X1);
-        Height := JSONFloatToStr(Y2 - Y1);
-
-        x := StringReplace(FloatToStr(X1), ',', '.',
-          MkSet(rfReplaceAll, rfIgnoreCase));
-        Y := StringReplace(FloatToStr(-Y2), ',', '.',
-          MkSet(rfReplaceAll, rfIgnoreCase));
-
-        {
-          bbox['pos'] :=[x0.round(), -y1.round()]; //
-          bbox['relpos'] :=[0, 0];
-          bbox['angle'] :=0;
-          bbox['size'] :=[(x1 - x0).round(), (y1 - y0).round()];
-          bbox['center'] :=[(x0 + bbox.size[0] / 2).round(), -(y0 + bbox.size[1] / 2).round()];
-        }
-
-        PnPout.Add('{');
-
-        PnPout.Add('"Designator":' +
-          JSONStrToStr(Component.SourceDesignator) + ',');
-        PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
-        PnPout.Add('"Footprint":' + JSONStrToStr(Component.Pattern) + ',');
-
-        sl := getparamc(Component);
-
-        PnPout.Add('"PartNumber":' +
-          JSONStrToStr(sl.Values[ValueParameterName]) + ',');
-        PnPout.Add('"Value":' + JSONStrToStr
-          (sl.Values[ValueParameterName]) + ',');
-
-        PnPout.Add('"Fields":' + '[');
-
-        for hhhhi := 0 to purpur.Count - 1 do
-        begin
-          if (hhhhi > 0) then
-            PnPout.Add(',');
-          hhhh := purpur[hhhhi];
-          PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
-        end;
-        PnPout.Add('],');
-
-        PnPout.Add('"Group":' + '[');
-
-        for hhhhi := 0 to purpur2.Count - 1 do
-        begin
-          if (hhhhi > 0) then
-            PnPout.Add(',');
-          hhhh := purpur2[hhhhi];
-          PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
-        end;
-        PnPout.Add('],');
-
-        PnPout.Add('"X":' + (x) + ',');
-        PnPout.Add('"Y":' + (Y) + ',');
-        PnPout.Add('"Width":' + (Width) + ',');
-        PnPout.Add('"Height":' + (Height) + ',');
-        PnPout.Add('"NoBOM":' + JSONBoolToStr(NoBOM) + ',');
-
-        PnPout.Add('"Pads":' + '[');
-
-        PadsCount := 0;
-        Iter := Component.GroupIterator_Create;
-        Iter.AddFilter_ObjectSet(MkSet(ePadObject));
-        Iter.AddFilter_LayerSet(AllLayers);
-        Prim := Iter.FirstPCBObject;
-        while (Prim <> nil) do
-        begin
-          Pad := Prim;
-          Inc(PadsCount);
-          If (PadsCount > 1) Then
-            PnPout.Add(',');
-          PnPout.Add('{');
-
-          // TODO: Not sure
-          PadType := Pad.Layer;
-          if (Pad.Layer = eTopLayer) then
-          begin
-            PadLayer := 'TopLayer';
-            PadType := 'smd';
-            PadWidth := FloatToStr(CoordToMMs(Pad.TopXSize));
-            PadHeight := FloatToStr(CoordToMMs(Pad.TopYSize));
-
-            PadShape := 'circle';
-            case (Pad.TopShape) of
-              1:
-                begin
-                  if PadWidth = PadHeight then
-                    PadShape := 'circle'
-                  else
-                    PadShape := 'oval';
-                  // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
-                end;
-              2:
-                PadShape := 'rect';
-              // 3:PadShape :='chamfrect';
-              9:
-                PadShape := 'roundrect';
-              // default:
-              // res['shape'] :='custom';
-            end;
-          end
-          else if (Pad.Layer = eBottomLayer) then
-          begin
-            PadLayer := 'BottomLayer';
-            PadType := 'smd';
-            PadWidth := FloatToStr(CoordToMMs(Prim.BotXSize));
-            PadHeight := FloatToStr(CoordToMMs(Prim.BotYSize));
-            PadShape := 'circle';
-            case (Pad.BotShape) of
-              1:
-                begin
-                  if PadWidth = PadHeight then
-                    PadShape := 'circle'
-                  else
-                    PadShape := 'oval';
-                  // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
-                end;
-              2:
-                PadShape := 'rect';
-              // 3:PadShape :='chamfrect';
-              9:
-                PadShape := 'roundrect';
-              // default:
-              // res['shape'] :='custom';
-            end;
-          end
-          else
-          begin
-            PadLayer := 'MultiLayer';
-            PadType := 'th';
-            PadWidth := FloatToStr(CoordToMMs(Prim.TopXSize));
-            PadHeight := FloatToStr(CoordToMMs(Prim.TopYSize));
-            // TODO: Is it norm?
-            PadShape := 'circle';
-            case (Pad.TopShape) of
-              1:
-                begin
-                  if PadWidth = PadHeight then
-                    PadShape := 'circle'
-                  else
-                    PadShape := 'oval';
-                  // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
-                end;
-              // 3:PadShape :='chamfrect';
-              9:
-                PadShape := 'roundrect';
-              // default:
-              // res['shape'] :='custom';
-            end;
-            case (Pad.BotShape) of
-              1:
-                begin
-                  if PadWidth = PadHeight then
-                    PadShape := 'circle'
-                  else
-                    PadShape := 'oval';
-                  // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
-                end;
-              2:
-                PadShape := 'rect';
-              // 3:PadShape :='chamfrect';
-              9:
-                PadShape := 'roundrect';
-              // default:
-              // res['shape'] :='custom';
-            end;
-
-            case (Pad.HoleType) of
-              0: // circle
-                begin
-                  // res["drillsize"] = [CoordToMMs(Prim.HoleSize).round(), CoordToMMs(Prim.HoleSize).round()];
-                  PadDrillShape := 'circle';
-                  PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
-                  PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
-                end;
-              1: // square, but not supported in kicad, so do as circle
-                begin
-                  // res["drillsize"] = [CoordToMMs(Prim.HoleSize).round(), CoordToMMs(Prim.HoleSize).round()];
-                  PadDrillShape := 'rect';
-                  PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleWidth));
-                  PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
-                end;
-              2: // slot
-                begin
-                  // res["drillsize"] = [CoordToMMs(Prim.HoleWidth).round(), CoordToMMs(Prim.HoleSize).round()];
-                  PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleWidth));
-                  PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
-                  PadDrillShape := 'oblong';
-                end;
-              // default:  //
-            end;
-
-          end;
-
-          PadPin1 := false;
-          if (Pad.name = '1') then
-          // if ("A1".indexOf(Pad.Name) != -1) then
-          begin
-            PadPin1 := true;
-          end;
-
-          PadWidth := StringReplace(PadWidth, ',', '.',
-            MkSet(rfReplaceAll, rfIgnoreCase));
-          PadHeight := StringReplace(PadHeight, ',', '.',
-            MkSet(rfReplaceAll, rfIgnoreCase));
-
-          PadX := JSONFloatToStr(CoordToMMs(Pad.x - Board.XOrigin));
-          PadY := JSONFloatToStr(-CoordToMMs(Pad.Y - Board.YOrigin));
-
-          PadAngle := JSONFloatToStr(Pad.Rotation);
-
-          Net := 'No Net';
-          if Prim.Net <> nil then
-            Net := Prim.Net.name;
-
-          PnPout.Add('"Layer":' + JSONStrToStr(PadLayer) + ',');
-          PnPout.Add('"Type":' + JSONStrToStr(PadType) + ',');
-          PnPout.Add('"Shape":' + JSONStrToStr(PadShape) + ',');
-          if PadType = 'th' then
-          begin
-            PnPout.Add('"DrillShape":' + JSONStrToStr(PadDrillShape) + ',');
-            PnPout.Add('"DrillWidth":' + (PadDrillWidth) + ',');
-            PnPout.Add('"DrillHeight":' + (PadDrillHeight) + ',');
-          end;
-          // PnPout.Add('"Debug":'+'"'+Preprocess(Prim.Layer)+'"'+',');
-          PnPout.Add('"X":' + (PadX) + ',');
-          PnPout.Add('"Y":' + (PadY) + ',');
-          PnPout.Add('"Width":' + (PadWidth) + ',');
-          PnPout.Add('"Height":' + (PadHeight) + ',');
-          PnPout.Add('"Angle":' + (PadAngle) + ',');
-          PnPout.Add('"Pin1":' + JSONBoolToStr(PadPin1) + ',');
-          PnPout.Add('"Net":' + JSONStrToStr(Net));
-
-          PnPout.Add('}');
-          // pads :=pads.concat(parsePad(Prim));
-          // if (isSMD and (Prim.Layer = eMultiLayer)) then begin
-          // isSMD :=false;
-          // end;
-          Prim := Iter.NextPCBObject;
-        end;
-        Component.GroupIterator_Destroy(Iter);
-
-        PnPout.Add(']');
-
-        PnPout.Add('}');
+        PnPout.Add(ParseComponent(Board, Component, purpur, purpur2, NoBOM));
       End;
     Component := Iterator.NextPCBObject;
   End;
@@ -909,57 +1411,11 @@ Begin
     case (Prim.ObjectId) of
       eArcObject:
         begin
-          // ;{edges.push(parseArc(Prim));}
-          EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.LineWidth));
-          EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.XCenter - Board.XOrigin));
-          EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.YCenter - Board.YOrigin));
-          EdgeX2 := JSONFloatToStr(-Prim.EndAngle);
-          EdgeY2 := JSONFloatToStr(-Prim.StartAngle);
-          EdgeRadius := JSONFloatToStr(CoordToMMs(Prim.Radius));
-
-          EdgeType := 'arc';
-          PnPout.Add('{');
-          PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-          PnPout.Add('"Width":' + (EdgeWidth) + ',');
-          PnPout.Add('"X":' + (EdgeX1) + ',');
-          PnPout.Add('"Y":' + (EdgeY1) + ',');
-          PnPout.Add('"Angle1":' + (EdgeX2) + ',');
-          PnPout.Add('"Angle2":' + (EdgeY2) + ',');
-          PnPout.Add('"Radius":' + (EdgeRadius));
-          PnPout.Add('}');
+          PnPout.Add(ParseArc(Board, Prim));
         end;
       eTrackObject:
         begin
-          // JSONPush(edges,parseTrack(Prim));
-          {
-            var start = [CoordToMMs(Prim.x1).round(), -CoordToMMs(Prim.y1).round()];
-            var end = [CoordToMMs(Prim.x2).round(), -CoordToMMs(Prim.y2).round()];
-            res["layer"] = Prim.Layer;
-            if (Prim.InPolygon)
-            res["type"] = "polygon";
-            res["svgpath"] = ["M", start, "L", end].join(" ");
-            else             res["type"] = "segment";
-            res["start"] = start;
-            res["end"] = end;
-            res["width"] = CoordToMMs(Prim.Width).round();
-          }
-
-          EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.Width));
-          EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.X1 - Board.XOrigin));
-          EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.Y1 - Board.YOrigin));
-          EdgeX2 := JSONFloatToStr(CoordToMMs(Prim.X2 - Board.XOrigin));
-          EdgeY2 := JSONFloatToStr(-CoordToMMs(Prim.Y2 - Board.YOrigin));
-
-          EdgeType := 'segment';
-          PnPout.Add('{');
-          PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-          PnPout.Add('"Width":' + (EdgeWidth) + ',');
-          PnPout.Add('"X1":' + (EdgeX1) + ',');
-          PnPout.Add('"Y1":' + (EdgeY1) + ',');
-          PnPout.Add('"X2":' + (EdgeX2) + ',');
-          PnPout.Add('"Y2":' + (EdgeY2));
-
-          PnPout.Add('}');
+          PnPout.Add(ParseTrack(Board, Prim));
         end;
     end;
 
@@ -1044,320 +1500,27 @@ Begin
     case (Prim.ObjectId) of
       eTextObject:
         begin
-          If (Prim.Layer = eTopOverlay) Then
-            Layer := 'TopOverlay'
-          Else If (Prim.Layer = eBottomOverlay) Then
-            Layer := 'BottomOverlay'
-          Else If (Prim.Layer = eTopLayer) Then
-            Layer := 'TopLayer'
-          Else If (Prim.Layer = eBottomLayer) Then
-            Layer := 'BottomLayer';
-
-          // X1 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Left- Board.XOrigin);
-          // Y1 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Bottom- Board.YOrigin);
-          // X2 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Right- Board.XOrigin);
-          // Y2 :=CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Top- Board.YOrigin);
-
-          // var x0, y0, x1, y1;
-          X1 := CoordToMMs(Prim.BoundingRectangleForSelection.Left -
-            Board.XOrigin);
-          Y1 := CoordToMMs(Prim.BoundingRectangleForSelection.Bottom -
-            Board.YOrigin);
-          X2 := CoordToMMs(Prim.BoundingRectangleForSelection.Right -
-            Board.XOrigin);
-          Y2 := CoordToMMs(Prim.BoundingRectangleForSelection.Top -
-            Board.YOrigin);
-
-          _W := X2 - X1;
-          _H := Y2 - Y1;
-
-          EdgeX1 := JSONFloatToStr(X1 + _W / 2);
-          EdgeY1 := JSONFloatToStr(-(Y1 + _H / 2));
-
-          // bbox["size"] = [(x1 - x0).round(), (y1 - y0).round()];
-
-          // bbox["center"] = [(x0 + bbox.size[0] / 2).round(), -(y0 + bbox.size[1] / 2).round()];
-
-          EdgeX2 := JSONFloatToStr(Prim.Rotation);
-
-          if (Prim.TextKind = 0) then
-          begin
-            // res["thickness"] = CoordToMMs(Prim.Width).round();
-            EdgeHeight := JSONFloatToStr(CoordToMMs(Prim.Size));
-            EdgeWidth := EdgeHeight; // single char's width in kicad
-          end
-          else if (Prim.TextKind = 1) then
-          begin
-            EdgeHeight := JSONFloatToStr(CoordToMMs(Prim.TTFTextHeight * 0.6));
-            EdgeWidth := JSONFloatToStr
-              (CoordToMMs(Prim.TTFTextWidth * 0.9 / Length(Prim.Text)));
-            // res["thickness"] = CoordToMMs(res["height"] * 0.1);
-          end;
-
-          EdgeType := 'text';
-          PnPout.Add('{');
-          PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
-          PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-          // PnPout.Add('"Width":'+'"'+Preprocess(EdgeWidth)+'"'+',');
-          PnPout.Add('"X":' + (EdgeX1) + ',');
-          PnPout.Add('"Y":' + (EdgeY1) + ',');
-          PnPout.Add('"Width":' + (EdgeWidth) + ',');
-          PnPout.Add('"Height":' + (EdgeHeight) + ',');
-          PnPout.Add('"Angle":' + (EdgeX2) + ',');
-          // PnPout.Add('"Angle2":'+'"'+Preprocess(EdgeY2)+'"'+',');
-          PnPout.Add('"Mirrored":' + JSONBoolToStr(Prim.MirrorFlag) + ',');
-          PnPout.Add('"Designator":' + JSONBoolToStr(Prim.IsDesignator) + ',');
-          PnPout.Add('"Value":' + JSONBoolToStr(Prim.IsComment) + ',');
-          PnPout.Add('"Text":' + JSONStrToStr(Prim.Text));
-          PnPout.Add('}');
+          PnPout.Add(ParseText(Board, Prim));
         end;
       eArcObject:
         begin
-          // ;{edges.push(parseArc(Prim));}
-
-          // res["type"] = "arc";
-          // res["width"] = width;
-          // res["startangle"] = -Prim.EndAngle.round();
-          // res["endangle"] = -Prim.StartAngle.round();
-          // res["start"] = [CoordToMMs(Prim.XCenter).round(), -CoordToMMs(Prim.YCenter).round()];
-
-          EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.LineWidth));
-          EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.XCenter - Board.XOrigin));
-          EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.YCenter - Board.YOrigin));
-          EdgeX2 := JSONFloatToStr(-Prim.EndAngle);
-          EdgeY2 := JSONFloatToStr(-Prim.StartAngle);
-          EdgeRadius := JSONFloatToStr(CoordToMMs(Prim.Radius));
-
-          If (Prim.Layer = eTopOverlay) Then
-            Layer := 'TopOverlay'
-          Else If (Prim.Layer = eBottomOverlay) Then
-            Layer := 'BottomOverlay'
-          Else If (Prim.Layer = eTopLayer) Then
-            Layer := 'TopLayer'
-          Else If (Prim.Layer = eBottomLayer) Then
-            Layer := 'BottomLayer';
-
-          EdgeType := 'arc';
-          PnPout.Add('{');
-          PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
-          PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-          PnPout.Add('"Width":' + (EdgeWidth) + ',');
-          PnPout.Add('"X":' + (EdgeX1) + ',');
-          PnPout.Add('"Y":' + (EdgeY1) + ',');
-          PnPout.Add('"Angle1":' + (EdgeX2) + ',');
-          PnPout.Add('"Angle2":' + (EdgeY2) + ',');
-          PnPout.Add('"Radius":' + (EdgeRadius));
-          PnPout.Add('}');
+          PnPout.Add(ParseArc2(Board, Prim));
         end;
       eTrackObject:
         begin
-          // JSONPush(edges,parseTrack(Prim));
-          {
-            var start = [CoordToMMs(Prim.x1).round(), -CoordToMMs(Prim.y1).round()];
-            var end = [CoordToMMs(Prim.x2).round(), -CoordToMMs(Prim.y2).round()];
-            res["layer"] = Prim.Layer;
-            if (Prim.InPolygon)
-            res["type"] = "polygon";
-            res["svgpath"] = ["M", start, "L", end].join(" ");
-            else             res["type"] = "segment";
-            res["start"] = start;
-            res["end"] = end;
-            res["width"] = CoordToMMs(Prim.Width).round();
-          }
-
-          EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.Width));
-          EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.X1 - Board.XOrigin));
-          EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.Y1 - Board.YOrigin));
-          EdgeX2 := JSONFloatToStr(CoordToMMs(Prim.X2 - Board.XOrigin));
-          EdgeY2 := JSONFloatToStr(-CoordToMMs(Prim.Y2 - Board.YOrigin));
-
-          If (Prim.Layer = eTopOverlay) Then
-            Layer := 'TopOverlay'
-          Else If (Prim.Layer = eBottomOverlay) Then
-            Layer := 'BottomOverlay'
-          Else If (Prim.Layer = eTopLayer) Then
-            Layer := 'TopLayer'
-          Else If (Prim.Layer = eBottomLayer) Then
-            Layer := 'BottomLayer';
-          Net := 'No Net';
-          if Prim.Net <> nil then
-            Net := Prim.Net.name;
-
-          EdgeType := 'segment';
-          PnPout.Add('{');
-          PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
-          PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-          PnPout.Add('"Width":' + (EdgeWidth) + ',');
-          PnPout.Add('"X1":' + (EdgeX1) + ',');
-          PnPout.Add('"Y1":' + (EdgeY1) + ',');
-          PnPout.Add('"X2":' + (EdgeX2) + ',');
-          PnPout.Add('"Y2":' + (EdgeY2) + ',');
-          PnPout.Add('"Net":' + JSONStrToStr(Net));
-          PnPout.Add('}');
+          PnPout.Add(ParseTrack2(Board, Prim));
         end;
       eViaObject:
         begin
-          // TODO: Layers
-          EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.Size));
-          EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.x - Board.XOrigin));
-          EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.Y - Board.YOrigin));
-          PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
-
-          If (Prim.Layer = eTopOverlay) Then
-            Layer := 'TopOverlay'
-          Else If (Prim.Layer = eBottomOverlay) Then
-            Layer := 'BottomOverlay'
-          Else If (Prim.Layer = eTopLayer) Then
-            Layer := 'TopLayer'
-          Else If (Prim.Layer = eBottomLayer) Then
-            Layer := 'BottomLayer'
-          Else If (Prim.Layer = eMultiLayer) Then
-            Layer := 'MultiLayer';
-          Net := 'No Net';
-          if Prim.Net <> nil then
-            Net := Prim.Net.name;
-
-          EdgeType := 'via';
-          PnPout.Add('{');
-          PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
-          PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-          PnPout.Add('"Width":' + JSONStrToStr(EdgeWidth) + ',');
-          PnPout.Add('"X":' + (EdgeX1) + ',');
-          PnPout.Add('"Y":' + (EdgeY1) + ',');
-          PnPout.Add('"DrillWidth":' + (PadDrillWidth) + ',');
-          PnPout.Add('"Net":' + JSONStrToStr(Net));
-          PnPout.Add('}');
+          PnPout.Add(ParseVIA(Board, Prim));
         end;
       eRegionObject:
         begin
-          If (Prim.Layer = eTopOverlay) Then
-            Layer := 'TopOverlay'
-          Else If (Prim.Layer = eBottomOverlay) Then
-            Layer := 'BottomOverlay'
-          Else If (Prim.Layer = eTopLayer) Then
-            Layer := 'TopLayer'
-          Else If (Prim.Layer = eBottomLayer) Then
-            Layer := 'BottomLayer';
-          Net := 'No Net';
-          if Prim.Net <> nil then
-            Net := Prim.Net.name;
-
-          EdgeType := 'polygon';
-          PnPout.Add('{');
-          PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
-          PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-          PnPout.Add('"Net":' + JSONStrToStr(Net) + ',');
-          PnPout.Add('"Points": [');
-          PnPout.Add('],');
-          // PnPout.Add('}');
-
-          k := 0;
-
-          PnPout.Add('"EX": [');
-
-          // CI1 := Prim.GroupIterator_Create;
-          // CI1.AddFilter_ObjectSet(MkSet(ePadObject));
-          // CO1 := CI1.FirstPCBObject;
-          // While (CO1 <> Nil) Do
-          CO1 := Prim;
-
-          // if (CO1<>nil) then
-          begin
-            if CO1.ObjectId = eRegionObject then
-            begin
-              Inc(k);
-              If (k > 1) Then
-                PnPout.Add(',');
-              PnPout.Add('[');
-              contour := CO1.GetMainContour();
-              for kk := 0 to contour.Count do
-              begin
-                If (kk > 0) Then
-                  PnPout.Add(',');
-                EdgeX1 := JSONFloatToStr
-                  (CoordToMMs(contour.GetState_PointX(kk mod contour.Count) -
-                  Board.XOrigin));
-                EdgeY1 := JSONFloatToStr
-                  (-CoordToMMs(contour.GetState_PointY(kk mod contour.Count) -
-                  Board.YOrigin));
-                PnPout.Add('[');
-                PnPout.Add(EdgeX1 + ',');
-                PnPout.Add(EdgeY1 );
-                PnPout.Add(']');
-              end;
-              PnPout.Add(']');
-            end;
-            // CO1 := CI1.NextPCBObject;
-          end;
-          // Prim.GroupIterator_Destroy(CI1);
-
-          PnPout.Add(']');
-
-          PnPout.Add('}');
+          PnPout.Add(ParseRegion(Board, Prim));
         end;
       ePolyObject:
         begin
-          If (Prim.Layer = eTopOverlay) Then
-            Layer := 'TopOverlay'
-          Else If (Prim.Layer = eBottomOverlay) Then
-            Layer := 'BottomOverlay'
-          Else If (Prim.Layer = eTopLayer) Then
-            Layer := 'TopLayer'
-          Else If (Prim.Layer = eBottomLayer) Then
-            Layer := 'BottomLayer';
-          Net := 'No Net';
-          if Prim.Net <> nil then
-            Net := Prim.Net.name;
-
-          EdgeType := 'polygon';
-          PnPout.Add('{');
-          PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
-          PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-          PnPout.Add('"Net":' + JSONStrToStr(Net) + ',');
-          PnPout.Add('"Points": [');
-          PnPout.Add('],');
-          // PnPout.Add('}');
-
-          k := 0;
-
-          PnPout.Add('"EX": [');
-
-          CI1 := Prim.GroupIterator_Create;
-          // CI1.AddFilter_ObjectSet(MkSet(ePadObject));
-          CO1 := CI1.FirstPCBObject;
-          While (CO1 <> Nil) Do
-          begin
-            if CO1.ObjectId = eRegionObject then
-            begin
-              Inc(k);
-              If (k > 1) Then
-                PnPout.Add(',');
-              PnPout.Add('[');
-              contour := CO1.GetMainContour();
-              for kk := 0 to contour.Count do
-              begin
-                If (kk > 0) Then
-                  PnPout.Add(',');
-                EdgeX1 := JSONFloatToStr
-                  (CoordToMMs(contour.GetState_PointX(kk mod contour.Count) -
-                  Board.XOrigin));
-                EdgeY1 := JSONFloatToStr
-                  (-CoordToMMs(contour.GetState_PointY(kk mod contour.Count) -
-                  Board.YOrigin));
-                PnPout.Add('[');
-                PnPout.Add(EdgeX1 + ',');
-                PnPout.Add(EdgeY1 );
-                PnPout.Add(']');
-              end;
-              PnPout.Add(']');
-            end;
-            CO1 := CI1.NextPCBObject;
-          end;
-          Prim.GroupIterator_Destroy(CI1);
-
-          PnPout.Add(']');
-
-          PnPout.Add('}');
+          PnPout.Add(ParsePoly(Board, Prim));
         end;
     end;
 
@@ -1380,13 +1543,13 @@ Begin
 
   PnPout.Add('"Fields":' + '[');
 
-   for hhhhi := 0 to purpur.Count - 1 do
-   begin
-     if (hhhhi > 0) then
-       PnPout.Add(',');
-       hhhh := purpur[hhhhi];
-          PnPout.Add(JSONStrToStr(hhhh));
-   end;
+  for hhhhi := 0 to purpur.Count - 1 do
+  begin
+    if (hhhhi > 0) then
+      PnPout.Add(',');
+    hhhh := purpur[hhhhi];
+    PnPout.Add(JSONStrToStr(hhhh));
+  end;
   PnPout.Add(']');
 
   PnPout.Add('}');
@@ -1408,6 +1571,1165 @@ Begin
 
     ShowMessage(IntToStr(Count) + ' were exported to Pick and Place file:' + #13 + Board.FileName + '.pic');
   }
+  StopTime := Now();
+  Elapsed := Trunc((StopTime - StartTime) * 86400 * 1000);
+  ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
+End;
+
+function ParseArcNative(Board: IPCB_Board; Prim: TObject): String;
+var
+  PnPout: TStringList;
+  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
+  EdgeType: String;
+begin
+  PnPout := TStringList.Create;
+
+  EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.LineWidth));
+  EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.XCenter - Board.XOrigin));
+  EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.YCenter - Board.YOrigin));
+  EdgeX2 := JSONFloatToStr(-Prim.EndAngle);
+  EdgeY2 := JSONFloatToStr(-Prim.StartAngle);
+  EdgeRadius := JSONFloatToStr(CoordToMMs(Prim.Radius));
+
+  EdgeType := 'arc';
+
+  PnPout.Add('{');
+  PnPout.Add('"start":' + '[' + EdgeX1 + ', ' + EdgeY1 + ']' + ',');
+  PnPout.Add('"endangle":' + EdgeY2 + ',');
+  PnPout.Add('"width":' + EdgeWidth + ',');
+  PnPout.Add('"radius":' + EdgeRadius + ',');
+  PnPout.Add('"startangle":' + EdgeX2 + ',');
+  PnPout.Add('"type":' + JSONStrToStr(EdgeType));
+  PnPout.Add('}');
+
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParseTrackNative(Board: IPCB_Board; Prim: TObject;
+  NoType: Boolean): String;
+var
+  PnPout: TStringList;
+  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
+  EdgeType: String;
+begin
+  PnPout := TStringList.Create;
+
+  EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.Width));
+  EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.X1 - Board.XOrigin));
+  EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.Y1 - Board.YOrigin));
+  EdgeX2 := JSONFloatToStr(CoordToMMs(Prim.X2 - Board.XOrigin));
+  EdgeY2 := JSONFloatToStr(-CoordToMMs(Prim.Y2 - Board.YOrigin));
+
+  EdgeType := 'segment';
+
+  PnPout.Add('{');
+  if not NoType then
+    PnPout.Add('"type":' + JSONStrToStr(EdgeType) + ',');
+  PnPout.Add('"start":' + '[' + EdgeX1 + ', ' + EdgeY1 + ']' + ',');
+  PnPout.Add('"end":' + '[' + EdgeX2 + ', ' + EdgeY2 + ']' + ',');
+  PnPout.Add('"width":' + EdgeWidth);
+  PnPout.Add('}');
+
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParseVIANative(Board: IPCB_Board; Prim: TObject;
+  NoType: Boolean): String;
+var
+  PnPout: TStringList;
+  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
+  EdgeType: String;
+  PadDrillWidth: String;
+begin
+  PnPout := TStringList.Create;
+
+  EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.Size));
+  EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.x - Board.XOrigin));
+  EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.Y - Board.YOrigin));
+  PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+
+  EdgeType := 'segment';
+
+  PnPout.Add('{');
+  if not NoType then
+    PnPout.Add('"type":' + JSONStrToStr(EdgeType) + ',');
+  PnPout.Add('"start":' + '[' + EdgeX1 + ', ' + EdgeY1 + ']' + ',');
+  PnPout.Add('"end":' + '[' + EdgeX1 + ', ' + EdgeY1 + ']' + ',');
+  PnPout.Add('"width":' + EdgeWidth + ',');
+  PnPout.Add('"drillsize":' + PadDrillWidth);
+  PnPout.Add('}');
+
+  {
+    // TODO: Layers
+    EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.Size));
+    EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.x - Board.XOrigin));
+    EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.Y - Board.YOrigin));
+    PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+
+    If (Prim.Layer = eTopOverlay) Then
+    Layer := 'TopOverlay'
+    Else If (Prim.Layer = eBottomOverlay) Then
+    Layer := 'BottomOverlay'
+    Else If (Prim.Layer = eTopLayer) Then
+    Layer := 'TopLayer'
+    Else If (Prim.Layer = eBottomLayer) Then
+    Layer := 'BottomLayer'
+    Else If (Prim.Layer = eMultiLayer) Then
+    Layer := 'MultiLayer';
+    Net := 'No Net';
+    if Prim.Net <> nil then
+    Net := Prim.Net.name;
+
+    PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
+    PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
+    PnPout.Add('"Width":' + JSONStrToStr(EdgeWidth) + ',');
+    PnPout.Add('"X":' + (EdgeX1) + ',');
+    PnPout.Add('"Y":' + (EdgeY1) + ',');
+    PnPout.Add('"DrillWidth":' + (PadDrillWidth) + ',');
+    PnPout.Add('"Net":' + JSONStrToStr(Net));
+  }
+
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParseComponentNative(Board: IPCB_Board; Component: TObject;
+  purpur, purpur2: TStringList; NoBOM: Boolean): String;
+var
+  PnPout: TStringList;
+  Iterator: IPCB_BoardIterator;
+  ComponentIterator: IPCB_GroupIterator;
+
+  Pad: IPCB_Pad;
+
+  x, Y, Rotation, Layer, Net: TString;
+
+  Iter, Prim: TObject;
+  PadsCount: Integer;
+  X1, Y1, X2, Y2, _W, _H: Single;
+  Width, Height: String;
+
+  sl: TStringList;
+  hhhhi: Integer;
+  hhhh: String;
+begin
+  PnPout := TStringList.Create;
+
+  If (Component.Layer = eTopLayer) Then
+    Layer := 'F'
+  Else
+    Layer := 'B';
+  x := JSONFloatToStr(CoordToMMs(Component.x - Board.XOrigin));
+  Y := JSONFloatToStr(-CoordToMMs(Component.Y - Board.YOrigin));
+  Rotation := IntToStr(Component.Rotation);
+
+  // TODO: Is it correct? X1,Y1 vs X,Y
+  X1 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Left -
+    Board.XOrigin);
+  Y1 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Bottom -
+    Board.YOrigin);
+  X2 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Right -
+    Board.XOrigin);
+  Y2 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Top -
+    Board.YOrigin);
+
+  Width := JSONFloatToStr(X2 - X1);
+  Height := JSONFloatToStr(Y2 - Y1);
+
+  x := StringReplace(FloatToStr(X1), ',', '.',
+    MkSet(rfReplaceAll, rfIgnoreCase));
+  Y := StringReplace(FloatToStr(-Y2), ',', '.',
+    MkSet(rfReplaceAll, rfIgnoreCase));
+
+  {
+    bbox['pos'] :=[x0.round(), -y1.round()]; //
+    bbox['relpos'] :=[0, 0];
+    bbox['angle'] :=0;
+    bbox['size'] :=[(x1 - x0).round(), (y1 - y0).round()];
+    bbox['center'] :=[(x0 + bbox.size[0] / 2).round(), -(y0 + bbox.size[1] / 2).round()];
+  }
+
+  PnPout.Add('{');
+  PnPout.Add('"attr":' + JSONStrToStr(Layer) + ',');
+  PnPout.Add('"footprint":' + JSONStrToStr(Component.Pattern) + ',');
+  PnPout.Add('"layer":' + JSONStrToStr(Layer) + ',');
+  PnPout.Add('"ref":' + JSONStrToStr(Component.SourceDesignator) + ',');
+  PnPout.Add('"val":' + JSONStrToStr(Layer) + ',');
+  PnPout.Add('"extra_fields":' + '{}');
+
+  // attr? extra_fields?
+
+  (*
+
+    sl := getparamc(Component);
+
+    PnPout.Add('"PartNumber":' + JSONStrToStr
+    (sl.Values[ValueParameterName]) + ',');
+    PnPout.Add('"Value":' + JSONStrToStr(sl.Values[ValueParameterName]) + ',');
+
+    PnPout.Add('"Fields":' + '[');
+
+    for hhhhi := 0 to purpur.Count - 1 do
+    begin
+    if (hhhhi > 0) then
+    PnPout.Add(',');
+    hhhh := purpur[hhhhi];
+    PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
+    end;
+    PnPout.Add('],');
+
+    PnPout.Add('"Group":' + '[');
+
+    for hhhhi := 0 to purpur2.Count - 1 do
+    begin
+    if (hhhhi > 0) then
+    PnPout.Add(',');
+    hhhh := purpur2[hhhhi];
+    PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
+    end;
+    PnPout.Add('],');
+
+    PnPout.Add('"NoBOM":' + JSONBoolToStr(NoBOM) + ',');
+
+  *)
+  PnPout.Add('}');
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParsePadNative(Board: IPCB_Board; Prim, Pad: TObject): String;
+var
+  PnPout: TStringList;
+  // Layer, Net: String;
+  // X1, Y1, X2, Y2, _W, _H: Single;
+  // EdgeWidth, EdgeX1, EdgeY1, PadDrillWidth: String;
+  // EdgeType: String;
+  PadsCount: Integer;
+  PadLayer, PadType: String;
+  PadX, PadY, PadAngle: TString;
+  X1, Y1, X2, Y2, _W, _H: Single;
+  Width, Height: String;
+  PadWidth, PadHeight: String;
+  PadPin1: Boolean;
+  PadShape, PadDrillShape: String;
+  PadDrillWidth, PadDrillHeight: String;
+  Net: String;
+begin
+  PnPout := TStringList.Create;
+
+  PnPout.Add('{');
+
+  // TODO: Not sure
+  PadType := Pad.Layer;
+  if (Pad.Layer = eTopLayer) then
+  begin
+    PadLayer := '["F"]';
+    PadType := 'smd';
+    PadWidth := FloatToStr(CoordToMMs(Pad.TopXSize));
+    PadHeight := FloatToStr(CoordToMMs(Pad.TopYSize));
+
+    PadShape := 'circle';
+    case (Pad.TopShape) of
+      1:
+        begin
+          if PadWidth = PadHeight then
+            PadShape := 'circle'
+          else
+            PadShape := 'oval';
+          // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
+        end;
+      2:
+        PadShape := 'rect';
+      // 3:PadShape :='chamfrect';
+      9:
+        PadShape := 'roundrect';
+      // default:
+      // res['shape'] :='custom';
+    end;
+  end
+  else if (Pad.Layer = eBottomLayer) then
+  begin
+    PadLayer := '["B"]';
+    PadType := 'smd';
+    PadWidth := FloatToStr(CoordToMMs(Prim.BotXSize));
+    PadHeight := FloatToStr(CoordToMMs(Prim.BotYSize));
+    PadShape := 'circle';
+    case (Pad.BotShape) of
+      1:
+        begin
+          if PadWidth = PadHeight then
+            PadShape := 'circle'
+          else
+            PadShape := 'oval';
+          // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
+        end;
+      2:
+        PadShape := 'rect';
+      // 3:PadShape :='chamfrect';
+      9:
+        PadShape := 'roundrect';
+      // default:
+      // res['shape'] :='custom';
+    end;
+  end
+  else
+  begin
+    PadLayer := '["F", "B"]';
+    PadType := 'th';
+    PadWidth := FloatToStr(CoordToMMs(Prim.TopXSize));
+    PadHeight := FloatToStr(CoordToMMs(Prim.TopYSize));
+    // TODO: Is it norm?
+    PadShape := 'circle';
+    case (Pad.TopShape) of
+      1:
+        begin
+          if PadWidth = PadHeight then
+            PadShape := 'circle'
+          else
+            PadShape := 'oval';
+          // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
+        end;
+      // 3:PadShape :='chamfrect';
+      9:
+        PadShape := 'roundrect';
+      // default:
+      // res['shape'] :='custom';
+    end;
+    case (Pad.BotShape) of
+      1:
+        begin
+          if PadWidth = PadHeight then
+            PadShape := 'circle'
+          else
+            PadShape := 'oval';
+          // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
+        end;
+      2:
+        PadShape := 'rect';
+      // 3:PadShape :='chamfrect';
+      9:
+        PadShape := 'roundrect';
+      // default:
+      // res['shape'] :='custom';
+    end;
+
+    case (Pad.HoleType) of
+      0: // circle
+        begin
+          // res["drillsize"] = [CoordToMMs(Prim.HoleSize).round(), CoordToMMs(Prim.HoleSize).round()];
+          PadDrillShape := 'circle';
+          PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+          PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+        end;
+      1: // square, but not supported in kicad, so do as circle
+        begin
+          // res["drillsize"] = [CoordToMMs(Prim.HoleSize).round(), CoordToMMs(Prim.HoleSize).round()];
+          PadDrillShape := 'rect';
+          PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleWidth));
+          PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+        end;
+      2: // slot
+        begin
+          // res["drillsize"] = [CoordToMMs(Prim.HoleWidth).round(), CoordToMMs(Prim.HoleSize).round()];
+          PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleWidth));
+          PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
+          PadDrillShape := 'oblong';
+        end;
+      // default:  //
+    end;
+
+  end;
+
+  PadPin1 := False;
+  if (Pad.name = '1') then
+  // if ("A1".indexOf(Pad.Name) != -1) then
+  begin
+    PadPin1 := True;
+  end;
+
+  PadWidth := StringReplace(PadWidth, ',', '.',
+    MkSet(rfReplaceAll, rfIgnoreCase));
+  PadHeight := StringReplace(PadHeight, ',', '.',
+    MkSet(rfReplaceAll, rfIgnoreCase));
+
+  PadX := JSONFloatToStr(CoordToMMs(Pad.x - Board.XOrigin));
+  PadY := JSONFloatToStr(-CoordToMMs(Pad.Y - Board.YOrigin));
+
+  PadAngle := JSONFloatToStr(Pad.Rotation);
+
+  Net := 'No Net';
+  if Prim.Net <> nil then
+    Net := Prim.Net.name;
+
+  PadType := 'smd';
+
+  PnPout.Add('"layers":' + PadLayer + ',');
+  PnPout.Add('"pos":' + '[' + PadX + ', ' + PadY + ']' + ',');
+  PnPout.Add('"size":' + '[' + PadWidth + ', ' + PadHeight + ']' + ',');
+  PnPout.Add('"angle":' + PadAngle + ',');
+  PnPout.Add('"shape":' + JSONStrToStr(PadShape) + ',');
+  PnPout.Add('"type":' + JSONStrToStr(PadType));
+
+  (*
+    PnPout.Add('"Layer":' + JSONStrToStr(PadLayer) + ',');
+    PnPout.Add('"Type":' + JSONStrToStr(PadType) + ',');
+    PnPout.Add('"Shape":' + JSONStrToStr(PadShape) + ',');
+    if PadType = 'th' then
+    begin
+    PnPout.Add('"DrillShape":' + JSONStrToStr(PadDrillShape) + ',');
+    PnPout.Add('"DrillWidth":' + (PadDrillWidth) + ',');
+    PnPout.Add('"DrillHeight":' + (PadDrillHeight) + ',');
+    end;
+    // PnPout.Add('"Debug":'+'"'+Preprocess(Prim.Layer)+'"'+',');
+    PnPout.Add('"X":' + (PadX) + ',');
+    PnPout.Add('"Y":' + (PadY) + ',');
+    PnPout.Add('"Width":' + (PadWidth) + ',');
+    PnPout.Add('"Height":' + (PadHeight) + ',');
+    PnPout.Add('"Angle":' + (PadAngle) + ',');
+    PnPout.Add('"Pin1":' + JSONBoolToStr(PadPin1) + ',');
+    PnPout.Add('"Net":' + JSONStrToStr(Net));
+  *)
+
+  PnPout.Add('}');
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParseFootprintNative(Board: IPCB_Board; Component: TObject;
+  purpur, purpur2: TStringList; NoBOM: Boolean): String;
+var
+  PnPout: TStringList;
+  Iterator: IPCB_BoardIterator;
+  ComponentIterator: IPCB_GroupIterator;
+
+  Pad: IPCB_Pad;
+
+  x, Y, Rotation, Layer, Net: TString;
+
+  Iter, Prim: TObject;
+  PadsCount: Integer;
+  X1, Y1, X2, Y2, _W, _H: Single;
+  Width, Height: String;
+
+  sl: TStringList;
+  hhhhi: Integer;
+  hhhh: String;
+begin
+  PnPout := TStringList.Create;
+
+  If (Component.Layer = eTopLayer) Then
+    Layer := 'F'
+  Else
+    Layer := 'B';
+  x := JSONFloatToStr(CoordToMMs(Component.x - Board.XOrigin));
+  Y := JSONFloatToStr(-CoordToMMs(Component.Y - Board.YOrigin));
+  Rotation := IntToStr(Component.Rotation);
+
+  // TODO: Is it correct? X1,Y1 vs X,Y
+  X1 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Left -
+    Board.XOrigin);
+  Y1 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Bottom -
+    Board.YOrigin);
+  X2 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Right -
+    Board.XOrigin);
+  Y2 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Top -
+    Board.YOrigin);
+
+  Width := JSONFloatToStr(X2 - X1);
+  Height := JSONFloatToStr(Y2 - Y1);
+
+  x := StringReplace(FloatToStr(X1), ',', '.',
+    MkSet(rfReplaceAll, rfIgnoreCase));
+  Y := StringReplace(FloatToStr(-Y2), ',', '.',
+    MkSet(rfReplaceAll, rfIgnoreCase));
+
+  {
+    bbox['pos'] :=[x0.round(), -y1.round()]; //
+    bbox['relpos'] :=[0, 0];
+    bbox['angle'] :=0;
+    bbox['size'] :=[(x1 - x0).round(), (y1 - y0).round()];
+    bbox['center'] :=[(x0 + bbox.size[0] / 2).round(), -(y0 + bbox.size[1] / 2).round()];
+  }
+
+  PnPout.Add('{');
+
+  PnPout.Add('"ref":' + JSONStrToStr(Component.SourceDesignator) + ',');
+  PnPout.Add('"center":' + '[0, 0]' + ',');
+  PnPout.Add('"bbox": {');
+  PnPout.Add('"pos":' + '[' + x + ', ' + Y + ']' + ',');
+  PnPout.Add('"relpos":' + '[0, 0]' + ',');
+  PnPout.Add('"size":' + '[' + Width + ', ' + Height + ']' + ',');
+  PnPout.Add('"angle":' + '0');
+  PnPout.Add('},');
+  PnPout.Add('"pads": [');
+
+  (*
+    PnPout.Add('"Designator":' + JSONStrToStr(Component.SourceDesignator) + ',');
+    PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
+
+    sl := getparamc(Component);
+
+    PnPout.Add('"PartNumber":' + JSONStrToStr
+    (sl.Values[ValueParameterName]) + ',');
+    PnPout.Add('"Value":' + JSONStrToStr(sl.Values[ValueParameterName]) + ',');
+
+    PnPout.Add('"X":' + (x) + ',');
+    PnPout.Add('"Y":' + (Y) + ',');
+    PnPout.Add('"Width":' + (Width) + ',');
+    PnPout.Add('"Height":' + (Height) + ',');
+    PnPout.Add('"NoBOM":' + JSONBoolToStr(NoBOM) + ',');
+
+    PnPout.Add('"Pads":' + '['); *)
+
+  PadsCount := 0;
+  Iter := Component.GroupIterator_Create;
+  Iter.AddFilter_ObjectSet(MkSet(ePadObject));
+  Iter.AddFilter_LayerSet(AllLayers);
+  Prim := Iter.FirstPCBObject;
+  while (Prim <> nil) do
+  begin
+    Pad := Prim;
+    Inc(PadsCount);
+    If (PadsCount > 1) Then
+      PnPout.Add(',');
+
+    PnPout.Add(ParsePadNative(Board, Prim, Pad));
+
+    // pads :=pads.concat(parsePad(Prim));
+    // if (isSMD and (Prim.Layer = eMultiLayer)) then begin
+    // isSMD :=false;
+    // end;
+    Prim := Iter.NextPCBObject;
+  end;
+  Component.GroupIterator_Destroy(Iter);
+
+  PnPout.Add('],');
+
+  PnPout.Add('"drawings": [],');
+  PnPout.Add('"layer":' + JSONStrToStr(Layer));
+  PnPout.Add('}');
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParseRegionNative(Board: IPCB_Board; Prim: TObject;
+  NoType: Boolean): String;
+var
+  PnPout: TStringList;
+  Layer, Net: String;
+  // X1, Y1, X2, Y2, _W, _H: Single;
+  // EdgeWidth, EdgeX1, EdgeY1, PadDrillWidth: String;
+  EdgeX1, EdgeY1: String;
+  EdgeType: String;
+  k: Integer;
+  CI1, CO1: TObject;
+  contour: IPCB_Contour;
+  kk: Integer;
+begin
+  PnPout := TStringList.Create;
+
+  If (Prim.Layer = eTopOverlay) Then
+    Layer := 'TopOverlay'
+  Else If (Prim.Layer = eBottomOverlay) Then
+    Layer := 'BottomOverlay'
+  Else If (Prim.Layer = eTopLayer) Then
+    Layer := 'TopLayer'
+  Else If (Prim.Layer = eBottomLayer) Then
+    Layer := 'BottomLayer';
+  Net := 'No Net';
+  if Prim.Net <> nil then
+    Net := Prim.Net.name;
+
+  EdgeType := 'polygon';
+  PnPout.Add('{');
+  if not NoType then
+  begin
+    PnPout.Add('"type":' + JSONStrToStr(EdgeType) + ',');
+    PnPout.Add('"pos":' + '[0,0]' + ',');
+    PnPout.Add('"angle":' + '0' + ',');
+  end;
+  // PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
+  // PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
+  // PnPout.Add('"Net":' + JSONStrToStr(Net) + ',');
+  PnPout.Add('"polygons": [');
+  // PnPout.Add('}');
+
+  k := 0;
+
+  // CI1 := Prim.GroupIterator_Create;
+  // CI1.AddFilter_ObjectSet(MkSet(ePadObject));
+  // CO1 := CI1.FirstPCBObject;
+  // While (CO1 <> Nil) Do
+  CO1 := Prim;
+
+  // if (CO1<>nil) then
+  begin
+    if CO1.ObjectId = eRegionObject then
+    begin
+      Inc(k);
+      If (k > 1) Then
+        PnPout.Add(',');
+      PnPout.Add('[');
+      contour := CO1.GetMainContour();
+      for kk := 0 to contour.Count do
+      begin
+        If (kk > 0) Then
+          PnPout.Add(',');
+        EdgeX1 := JSONFloatToStr
+          (CoordToMMs(contour.GetState_PointX(kk mod contour.Count) -
+          Board.XOrigin));
+        EdgeY1 := JSONFloatToStr
+          (-CoordToMMs(contour.GetState_PointY(kk mod contour.Count) -
+          Board.YOrigin));
+        PnPout.Add('[');
+        PnPout.Add(EdgeX1 + ',');
+        PnPout.Add(EdgeY1);
+        PnPout.Add(']');
+      end;
+      PnPout.Add(']');
+    end;
+    // CO1 := CI1.NextPCBObject;
+  end;
+  // Prim.GroupIterator_Destroy(CI1);
+
+  PnPout.Add(']');
+
+  PnPout.Add('}');
+
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParsePolyNative(Board: IPCB_Board; Prim: TObject;
+  NoType: Boolean): String;
+var
+  PnPout: TStringList;
+  Layer, Net: String;
+  // X1, Y1, X2, Y2, _W, _H: Single;
+  // EdgeWidth, EdgeX1, EdgeY1, PadDrillWidth: String;
+  EdgeX1, EdgeY1: String;
+  EdgeType: String;
+  k: Integer;
+  CI1, CO1: TObject;
+  contour: IPCB_Contour;
+  kk: Integer;
+begin
+  PnPout := TStringList.Create;
+
+  If (Prim.Layer = eTopOverlay) Then
+    Layer := 'TopOverlay'
+  Else If (Prim.Layer = eBottomOverlay) Then
+    Layer := 'BottomOverlay'
+  Else If (Prim.Layer = eTopLayer) Then
+    Layer := 'TopLayer'
+  Else If (Prim.Layer = eBottomLayer) Then
+    Layer := 'BottomLayer';
+  Net := 'No Net';
+  if Prim.Net <> nil then
+    Net := Prim.Net.name;
+
+  EdgeType := 'polygon';
+  PnPout.Add('{');
+  if not NoType then
+  begin
+    PnPout.Add('"type":' + JSONStrToStr(EdgeType) + ',');
+    PnPout.Add('"pos":' + '[0,0]' + ',');
+    PnPout.Add('"angle":' + '0' + ',');
+  end;
+  // PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
+  // PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
+  // PnPout.Add('"Net":' + JSONStrToStr(Net) + ',');
+  PnPout.Add('"polygons": [');
+
+  k := 0;
+
+  CI1 := Prim.GroupIterator_Create;
+  // CI1.AddFilter_ObjectSet(MkSet(ePadObject));
+  CO1 := CI1.FirstPCBObject;
+  While (CO1 <> Nil) Do
+  begin
+    if CO1.ObjectId = eRegionObject then
+    begin
+      Inc(k);
+      If (k > 1) Then
+        PnPout.Add(',');
+      PnPout.Add('[');
+      contour := CO1.GetMainContour();
+      for kk := 0 to contour.Count do
+      begin
+        If (kk > 0) Then
+          PnPout.Add(',');
+        EdgeX1 := JSONFloatToStr
+          (CoordToMMs(contour.GetState_PointX(kk mod contour.Count) -
+          Board.XOrigin));
+        EdgeY1 := JSONFloatToStr
+          (-CoordToMMs(contour.GetState_PointY(kk mod contour.Count) -
+          Board.YOrigin));
+        PnPout.Add('[');
+        PnPout.Add(EdgeX1 + ',');
+        PnPout.Add(EdgeY1);
+        PnPout.Add(']');
+      end;
+      PnPout.Add(']');
+    end;
+    CO1 := CI1.NextPCBObject;
+  end;
+  Prim.GroupIterator_Destroy(CI1);
+
+  PnPout.Add(']');
+
+  PnPout.Add('}');
+
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function PickAndPlaceOutputExNative(Dummy: Boolean): String;
+var
+  Board: IPCB_Board; // document board object
+  Component: IPCB_Component; // component object
+  Iterator: IPCB_BoardIterator;
+  SMDcomponent: Boolean;
+  BoardUnits: String;
+  // Current unit string mm/mils
+  PnPout: TStringList;
+  Count: Integer;
+  FileName: TString;
+  Document: IServerDocument;
+  pcbDocPath: TString;
+  flagRequirePcbDocFile: Boolean;
+  Separator: TString;
+  Iter, Prim: TObject;
+  PadsCount: Integer;
+  X1, Y1, X2, Y2, _W, _H: Single;
+  Width, Height: String;
+  CurrParm: IParameter;
+  NoBOM: Boolean;
+  ccc: IComponent;
+  Edges: String;
+
+  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
+
+  _Document: IServerDocument;
+  // sl: TStringList;
+  tmpx, tmpy: String;
+  purpur: TStringList;
+  purpur2: TStringList;
+  hhhhi: Integer;
+  hhhh: String;
+  StartTime, StopTime: TDateTime;
+  Elapsed: Integer;
+  Metadata: String;
+  EdgesBBox: String;
+  Components: String;
+  TracksF: String;
+  TracksB: String;
+  ZonesF: String;
+  ZonesB: String;
+  Footprints: String;
+  SilkscreenF: String;
+  SilkscreenB: String;
+Begin
+  // Make sure the current Workspace opens or else quit this script
+  CurrWorkSpace := GetWorkSpace;
+  If (CurrWorkSpace = Nil) Then
+    Exit;
+
+  // Make sure the currently focussed Project in this Workspace opens or else
+  // quit this script
+  CurrProject := CurrWorkSpace.DM_FocusedProject;
+  If CurrProject = Nil Then
+    Exit;
+
+  flagRequirePcbDocFile := True;
+
+  FindProjectPcbDocFile(CurrProject, flagRequirePcbDocFile,
+    { var } pcbDocPath);
+
+  // TODO: Close
+  _Document := Client.OpenDocument('pcb', pcbDocPath);
+  Board := PCBServer.GetPCBBoardByPath(pcbDocPath);
+
+  If Not Assigned(Board) Then // check of active document
+  Begin
+    ShowMessage('The Current Document is not a PCB Document.');
+    Exit;
+  End;
+
+  StartTime := Now();
+
+  GetParameters(Board);
+
+  purpur := getpurpur(0);
+  purpur2 := getpurpur2(0);
+
+  Iterator := Board.BoardIterator_Create;
+  Iterator.AddFilter_ObjectSet(MkSet(eComponentObject));
+  Iterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
+  Iterator.AddFilter_Method(eProcessAll);
+
+  Separator := GetSeparator(0);
+  Count := 0;
+  PnPout := TStringList.Create;
+  Component := Iterator.FirstPCBObject;
+
+  While (Component <> Nil) Do
+  Begin
+    NoBOM := False;
+    ccc := GetCompFromCompEx(Component);
+    CurrParm := ccc.DM_GetParameterByName('Component Kind');
+    // (CurrParm <> nil) and
+    if (CurrParm.DM_Value = 'Standard (No BOM)') then
+    begin
+      NoBOM := True;
+    end;
+
+    // Print Pick&Place data of SMD components to file
+    if UseItEx(Component.SourceUniqueId, Component.SourceDesignator,
+      ProjectVariant) then
+      if (LayerFilterIndex = 0) or
+        ((LayerFilterCb = 1) and (Component.Layer = eTopLayer)) or
+        ((LayerFilterCb = 2) and (Component.Layer = eBottomLayer)) then
+      Begin
+        Inc(Count);
+        If (Count > 1) Then
+        begin
+          Components := Components + ','; // PnPout.Add(',');
+          Footprints := Footprints + ','; // PnPout.Add(',');
+        end;
+
+        Components := Components + ParseComponentNative(Board, Component,
+          purpur, purpur2, NoBOM);
+        Footprints := Footprints + ParseFootprintNative(Board, Component,
+          purpur, purpur2, NoBOM);
+
+        // PnPout.Add(ParseComponent(Board, Component, purpur, purpur2, NoBOM));
+      End;
+    Component := Iterator.NextPCBObject;
+  End;
+  Board.BoardIterator_Destroy(Iterator);
+
+  // PnPout.Add('],');
+  // PnPout.Add('"Board":[');
+
+  Edges := '';
+
+  Count := 0;
+
+  Iter := Board.BoardIterator_Create;
+  Iter.AddFilter_LayerSet(MkSet(eKeepOutLayer));
+  Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject));
+  Iter.AddFilter_Method(eProcessAll);
+  Prim := Iter.FirstPCBObject;
+  while (Prim <> nil) do
+  begin
+    Inc(Count);
+    If (Count > 1) Then
+      Edges := Edges + ', ';
+
+    case (Prim.ObjectId) of
+      eArcObject:
+        begin
+          Edges := Edges + ParseArcNative(Board, Prim);
+        end;
+      eTrackObject:
+        begin
+          Edges := Edges + ParseTrackNative(Board, Prim, False);
+        end;
+    end;
+
+    Prim := Iter.NextPCBObject;
+  end;
+  Board.BoardIterator_Destroy(Iter);
+  (*
+    PnPout.Add('],');
+    PnPout.Add('"BB":{');
+
+    // var bbox = {};
+    // bbox["minx"] = CoordToMMs(Board.BoardOutline.BoundingRectangle.Left).round();
+    // bbox["miny"] = -CoordToMMs(pcb.board.BoardOutline.BoundingRectangle.Top).round();
+    // bbox["maxx"] = CoordToMMs(pcb.board.BoardOutline.BoundingRectangle.Right).round();
+    // bbox["maxy"] = -CoordToMMs(pcb.board.BoardOutline.BoundingRectangle.Bottom).round();
+  *)
+
+  EdgeX1 := JSONFloatToStr(CoordToMMs(Board.BoardOutline.BoundingRectangle.Left
+    - Board.XOrigin));
+  EdgeY1 := JSONFloatToStr(-CoordToMMs(Board.BoardOutline.BoundingRectangle.Top
+    - Board.YOrigin));
+  EdgeX2 := JSONFloatToStr(CoordToMMs(Board.BoardOutline.BoundingRectangle.Right
+    - Board.XOrigin));
+  EdgeY2 := JSONFloatToStr
+    (-CoordToMMs(Board.BoardOutline.BoundingRectangle.Bottom - Board.YOrigin));
+  {
+    EdgeX1 := JSONFloatToStr(CoordToMMs(Board.BoardOutline.BoundingRectangle.Left
+    - 0));
+    EdgeY1 := JSONFloatToStr(-CoordToMMs(Board.BoardOutline.BoundingRectangle.Top
+    - 0));
+    EdgeX2 := JSONFloatToStr(CoordToMMs(Board.BoardOutline.BoundingRectangle.Right
+    - 0));
+    EdgeY2 := JSONFloatToStr
+    (-CoordToMMs(Board.BoardOutline.BoundingRectangle.Bottom - 0));
+  }
+  EdgesBBox := '';
+
+  EdgesBBox := EdgesBBox + '"minx":' + (EdgeX1) + ',';
+  EdgesBBox := EdgesBBox + '"miny":' + (EdgeY1) + ',';
+  EdgesBBox := EdgesBBox + '"maxx":' + (EdgeX2) + ',';
+  EdgesBBox := EdgesBBox + '"maxy":' + (EdgeY2);
+
+
+  // PnPout.Add('},');
+  // PnPout.Add('"Extra":[');
+
+  Count := 0;
+
+  TracksF := '';
+  TracksB := '';
+  SilkscreenF := '';
+  SilkscreenB := '';
+  ZonesF := '';
+  ZonesB := '';
+
+  Iter := Board.BoardIterator_Create;
+  Iter.AddFilter_LayerSet(MkSet(eTopOverlay, eBottomOverlay, eTopLayer,
+    eBottomLayer, eMultiLayer));
+  Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject, eTextObject,
+    ePolyObject, eRegionObject, eViaObject));
+  Iter.AddFilter_Method(eProcessAll);
+  Prim := Iter.FirstPCBObject;
+  while (Prim <> nil) do
+  begin
+    // TODO: UGLY
+    if (Prim.ObjectId = eTextObject) and (Prim.IsHidden) then
+    begin
+      Prim := Iter.NextPCBObject;
+      continue;
+    end;
+    if ((Prim.Layer = eTopLayer) or (Prim.Layer = eBottomLayer)) and
+      (Prim.ObjectId <> eTrackObject) and (Prim.ObjectId <> eViaObject) and
+      (Prim.ObjectId <> ePolyObject) and (Prim.ObjectId <> eFillObject) and
+      (Prim.ObjectId <> eRegionObject) then
+    begin
+      Prim := Iter.NextPCBObject;
+      continue;
+    end;
+    if (Prim.ObjectId = eRegionObject) and
+      ((Prim.Kind() <> eRegionKind_Copper) or Prim.InPolygon()) then
+    begin
+      Prim := Iter.NextPCBObject;
+      continue;
+    end;
+    if ((Prim.ObjectId = ePolyObject)) and
+      ((Prim.Layer <> eTopLayer) and (Prim.Layer <> eBottomLayer)) then
+    begin
+      Prim := Iter.NextPCBObject;
+      continue;
+    end;
+
+    // Inc(Count);
+    // If (Count > 1) Then
+    // PnPout.Add(',');
+
+    case (Prim.ObjectId) of
+      eTextObject:
+        begin
+          // PnPout.Add(ParseText(Board, Prim));
+        end;
+      eArcObject:
+        begin
+          // PnPout.Add(ParseArc2(Board, Prim));
+        end;
+      eTrackObject:
+        begin
+          If (Prim.Layer = eTopOverlay) Then
+          begin
+            if Length(SilkscreenF) > 0 then
+              SilkscreenF := SilkscreenF + ', ';
+            SilkscreenF := SilkscreenF + ParseTrackNative(Board, Prim, False);
+          end;
+          If (Prim.Layer = eBottomOverlay) Then
+          begin
+            if Length(SilkscreenB) > 0 then
+              SilkscreenB := SilkscreenB + ', ';
+            SilkscreenB := SilkscreenB + ParseTrackNative(Board, Prim, False);
+          end;
+          If (Prim.Layer = eTopLayer) Then
+          begin
+            if Length(TracksF) > 0 then
+              TracksF := TracksF + ', ';
+            TracksF := TracksF + ParseTrackNative(Board, Prim, True);
+          end;
+          If (Prim.Layer = eBottomLayer) Then
+          begin
+            if Length(TracksB) > 0 then
+              TracksB := TracksB + ', ';
+            TracksB := TracksB + ParseTrackNative(Board, Prim, True);
+          end;
+        end;
+      eViaObject:
+        begin
+
+          // If (Prim.Layer = eTopLayer) Then
+          begin
+            if Length(TracksF) > 0 then
+              TracksF := TracksF + ', ';
+            TracksF := TracksF + ParseVIANative(Board, Prim, True);
+          end;
+
+          // If (Prim.Layer = eBottomLayer) Then
+          begin
+            if Length(TracksB) > 0 then
+              TracksB := TracksB + ', ';
+            TracksB := TracksB + ParseVIANative(Board, Prim, True);
+          end;
+        end;
+      eRegionObject:
+        begin
+          If (Prim.Layer = eTopOverlay) Then
+          begin
+            if Length(SilkscreenF) > 0 then
+              SilkscreenF := SilkscreenF + ', ';
+            SilkscreenF := SilkscreenF + ParseRegionNative(Board, Prim, False);
+          end;
+          If (Prim.Layer = eBottomOverlay) Then
+          begin
+            if Length(SilkscreenB) > 0 then
+              SilkscreenB := SilkscreenB + ', ';
+            SilkscreenB := SilkscreenB + ParseRegionNative(Board, Prim, False);
+          end;
+          If (Prim.Layer = eTopLayer) Then
+          begin
+            if Length(ZonesF) > 0 then
+              ZonesF := ZonesF + ', ';
+            ZonesF := ZonesF + ParseRegionNative(Board, Prim, True);
+          end;
+          If (Prim.Layer = eBottomLayer) Then
+          begin
+            if Length(ZonesB) > 0 then
+              ZonesB := ZonesB + ', ';
+            ZonesB := ZonesB + ParseRegionNative(Board, Prim, True);
+          end;
+        end;
+      ePolyObject:
+        begin
+          If (Prim.Layer = eTopOverlay) Then
+          begin
+            if Length(SilkscreenF) > 0 then
+              SilkscreenF := SilkscreenF + ', ';
+            SilkscreenF := SilkscreenF + ParsePolyNative(Board, Prim, False);
+          end;
+          If (Prim.Layer = eBottomOverlay) Then
+          begin
+            if Length(SilkscreenB) > 0 then
+              SilkscreenB := SilkscreenB + ', ';
+            SilkscreenB := SilkscreenB + ParsePolyNative(Board, Prim, False);
+          end;
+          If (Prim.Layer = eTopLayer) Then
+          begin
+            if Length(ZonesF) > 0 then
+              ZonesF := ZonesF + ', ';
+            ZonesF := ZonesF + ParsePolyNative(Board, Prim, True);
+          end;
+          If (Prim.Layer = eBottomLayer) Then
+          begin
+            if Length(ZonesB) > 0 then
+              ZonesB := ZonesB + ', ';
+            ZonesB := ZonesB + ParsePolyNative(Board, Prim, True);
+          end;
+        end;
+    end;
+
+    Prim := Iter.NextPCBObject;
+  end;
+  Board.BoardIterator_Destroy(Iter);
+
+  // PnPout.Add('],');
+  // PnPout.Add('"Metadata":{');*)
+
+  Metadata := '';
+
+  Metadata := Metadata + '"title":' + JSONStrToStr(Title) + ',';
+  Metadata := Metadata + '"revision":' + JSONStrToStr(Revision) + ',';
+  Metadata := Metadata + '"company":' + JSONStrToStr(Company) + ',';
+  Metadata := Metadata + '"date":' + JSONStrToStr('todo');
+
+  (* PnPout.Add('},');
+    PnPout.Add('"Settings":{');
+    PnPout.Add('"AddNets":' + JSONBoolToStr(AddNets) + ',');
+    PnPout.Add('"AddTracks":' + JSONBoolToStr(AddTracks) + ',');
+
+    PnPout.Add('"Fields":' + '[');
+
+    for hhhhi := 0 to purpur.Count - 1 do
+    begin
+    if (hhhhi > 0) then
+    PnPout.Add(',');
+    hhhh := purpur[hhhhi];
+    PnPout.Add(JSONStrToStr(hhhh));
+    end;
+    PnPout.Add(']');
+
+    PnPout.Add('}');
+    PnPout.Add('}');
+
+  *)
+
+  PnPout := TStringList.Create;
+  PnPout.Add('{');
+  PnPout.Add('"spec_version": 1,');
+  PnPout.Add('"pcbdata": {');
+  PnPout.Add('"edges_bbox": {' + EdgesBBox + '},');
+  PnPout.Add('"edges": [' + Edges + '],');
+
+  PnPout.Add('"drawings": {');
+
+  PnPout.Add('"silkscreen": {');
+  PnPout.Add('"F": [' + SilkscreenF + '],');
+  PnPout.Add('"B": [' + SilkscreenB + ']');
+  PnPout.Add('},');
+
+  PnPout.Add('"fabrication": {');
+  PnPout.Add('"F": [' + '' + '],');
+  PnPout.Add('"B": [' + '' + ']');
+  PnPout.Add('}');
+
+  PnPout.Add('},');
+
+  PnPout.Add('"footprints": [' + Footprints + '],');
+  PnPout.Add('"metadata": {' + Metadata + '},');
+
+  PnPout.Add('"tracks": {');
+  PnPout.Add('"F": [' + TracksF + '],');
+  PnPout.Add('"B": [' + TracksB + ']');
+  PnPout.Add('},');
+
+  PnPout.Add('"zones": {');
+  PnPout.Add('"F": [' + ZonesF + '],');
+  PnPout.Add('"B": [' + ZonesB + ']');
+  PnPout.Add('},');
+
+  PnPout.Add('"nets": [],');
+  PnPout.Add('"font_data": {}');
+  PnPout.Add('},');
+  PnPout.Add('"components": [' + Components + ']');
+  PnPout.Add('}');
+
+  Result := PnPout.Text;
+
+  PnPout.Free;
+
+  {
+    Document  := Client.OpenDocument('Text', FileName);
+    If Document <> Nil Then
+    Client.ShowDocument(Document);
+
+    ShowMessage(IntToStr(Count) + ' were exported to Pick and Place file:' + #13 + Board.FileName + '.pic');
+  }
+  StopTime := Now();
+  Elapsed := Trunc((StopTime - StartTime) * 86400 * 1000);
+  ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
 End;
 
 function GenerConf(Dummy: Integer): String;
@@ -1927,20 +3249,29 @@ var
   f2, f5, tmp, cfg: String;
 begin
   SetState_FromParameters(Parameters);
-  tmp := PickAndPlaceOutputEx(FormatIndex < 2);
+
   if FormatIndex = 0 then
   begin
+    tmp := PickAndPlaceOutputEx(FormatIndex < 2);
     cfg := GenerConf(0);
     Gener(tmp, cfg);
   end
   else if FormatIndex = 1 then
   begin
+    tmp := PickAndPlaceOutputEx(FormatIndex < 2);
     Gener2(tmp, cfg);
+  end
+  else if FormatIndex = 2 then
+  begin
+    tmp := PickAndPlaceOutputEx(FormatIndex < 2);
+    Gener3(tmp, cfg);
   end
   else
   begin
+    tmp := PickAndPlaceOutputExNative(FormatIndex < 2);
     Gener3(tmp, cfg);
   end;
+
   f2 := GetOutputFileNameWithExtension('.csv');
   f5 := GetPluginExecutableFileName(0);
 end;
@@ -2029,16 +3360,6 @@ Begin
 end;
 
 procedure LoadParameterNames(Dummy: Integer);
-Var
-  CompCount: Integer; // The Number of Components in the Flattened Document
-  CompIndex: Integer; // An Index for pulling out components
-  ParmCount: Integer; // The Number of Parameters in a Component
-  ParmIndex: Integer; // An Index for pulling out parameters
-  CurrParm: IParameter; // An interface handle to the current parameter
-  NameCount: Integer; // The Number of parameter Names found
-  NameIndex: Integer; // An Index for pulling out parameter Names
-  DNIIndex: Integer; // The Index for the parameter named "DNI"
-  NameList: TStringList; // Exapndable parameter Name list
 Begin
   LayerFilterCb.Items.Add('Both');
   LayerFilterCb.Items.Add('Top');
@@ -2047,91 +3368,9 @@ Begin
   FormatCb.Items.Add('HTML');
   FormatCb.Items.Add('JS');
   FormatCb.Items.Add('JSON');
+  FormatCb.Items.Add('JSON Generic');
 
   foobar(0);
-
-  // FieldSeparatorCb.Items.Add(',');
-  // FieldSeparatorCb.Items.Add(';');
-  // FieldSeparatorCb.Items.Add('Space');
-  // FieldSeparatorCb.Items.Add('Tab');
-
-  /// /////////////////////////////////////////////////
-  {
-    // Fetch the Flattened schematic sheet document.  This is a fictitious document
-    // generated when the project is compiled containing all components from all
-    // sheets.  This is much more useful for making lists of everything than rummaging
-    // through all the sheets one at a time.  This sheet is not graphical in that
-    // it cannot be viewed like a schematic, but you can view what's in it by using
-    // the Navigator panel.
-    FlattenedDoc := CurrProject.DM_DocumentFlattened;
-
-    // If we couldn't get the flattened sheet, then most likely the project has
-    // not been compiled recently
-    If (FlattenedDoc = Nil) Then
-    Begin
-    // First try compiling the project
-    AddStringParameter( 'Action', 'Compile' );
-    AddStringParameter( 'ObjectKind', 'Project' );
-    RunProcess( 'WorkspaceManager:Compile' );
-
-    // Try Again to open the flattened document
-    FlattenedDoc := CurrProject.DM_DocumentFlattened;
-    If (FlattenedDoc = Nil) Then
-    Begin
-    ShowMessage('NOTICE: Compile the Project before Running this report.');
-    Close;
-    Exit;
-    End; // If (FlattenedDoc = Nil) Then
-    End; // If (FlattenedDoc = Nil) Then
-
-    // Create an expandable string list to hold parameter Names
-    NameList := TStringList.Create;
-
-    // Let the TStringList automatically sort itself and remove duplicates as it is created
-    NameList.Sorted := True;
-    NameList.Duplicates := dupIgnore;
-
-    // Now that we have the flattened document, check how many components are in it
-    CompCount := FlattenedDoc.DM_ComponentCount;
-
-    // Walk through every component one-by-one so we can look at it's parameter names
-    For CompIndex := 0 To CompCount - 1 Do
-    Begin
-    // Fetch a Component
-    CurrComponent := FlattenedDoc.DM_Components[ CompIndex ];
-
-    // Determine how many parameters it has
-    ParmCount := CurrComponent.DM_ParameterCount;
-
-    // Walk through every parameter of this component one-by-one
-    For ParmIndex := 0 To ParmCount - 1 Do
-    Begin
-    // Fetch one of the component's Parameters
-    CurrParm := CurrComponent.DM_Parameters( ParmIndex );
-
-    // Add it's name to the string list
-    NameList.Add := CurrParm.DM_Name;
-    End; // For ParmIndex := 0 To ParmCount - 1 Do
-
-    End; // CompIndex := 0 To CompCount - 1 Do
-
-    // Determine how many records are in the parameter list
-    NameCount := NameList.Count;
-
-    // Add all parameter names in this list to the Parameters Combo-Box
-    // and also default to the parameter named DNI if it exists
-    DNIIndex := 0;
-    For NameIndex := 0 To NameCount - 1 Do
-    Begin
-    If (NameList.Strings[ NameIndex ] = 'DNI') Then DNIIndex := NameIndex;
-    ParametersComboBox.Items.Add( NameList.Strings[ NameIndex ] );
-    End;
-
-    // Choose the entry to start with
-    ParametersComboBox.ItemIndex := DNIIndex;
-
-    // Free up the Parameter Name List as we no longer need it
-    NameList.Free; }
 End;
 
 procedure Initialize;

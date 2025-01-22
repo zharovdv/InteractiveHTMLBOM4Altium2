@@ -22,7 +22,7 @@ object MainFrm: TMainFrm
   end
   object Label1: TLabel
     Left = 16
-    Top = 168
+    Top = 176
     Width = 34
     Height = 13
     Caption = 'Format'
@@ -61,6 +61,13 @@ object MainFrm: TMainFrm
     Width = 87
     Height = 13
     Caption = 'Group parameters'
+  end
+  object Label8: TLabel
+    Left = 16
+    Top = 208
+    Width = 79
+    Height = 13
+    Caption = 'Value parameter'
   end
   object Panel1: TPanel
     Left = 0
@@ -119,7 +126,7 @@ object MainFrm: TMainFrm
     TabOrder = 3
   end
   object LayerFilterCb: TComboBox
-    Left = 64
+    Left = 104
     Top = 136
     Width = 145
     Height = 21
@@ -127,7 +134,7 @@ object MainFrm: TMainFrm
     TabOrder = 4
   end
   object FormatCb: TComboBox
-    Left = 64
+    Left = 104
     Top = 168
     Width = 145
     Height = 21
@@ -172,7 +179,7 @@ object MainFrm: TMainFrm
     TabOrder = 10
   end
   object ValueParameterCb: TComboBox
-    Left = 112
+    Left = 104
     Top = 200
     Width = 145
     Height = 21
@@ -187,20 +194,12 @@ object MainFrm: TMainFrm
     ItemHeight = 13
     TabOrder = 12
   end
-  object CheckBox1: TCheckBox
-    Left = 18
-    Top = 200
-    Width = 78
-    Height = 17
-    Caption = 'Add Tracks'
-    TabOrder = 13
-  end
   object GroupParametersClb: TCheckListBox
     Left = 224
     Top = 256
     Width = 176
     Height = 96
     ItemHeight = 13
-    TabOrder = 14
+    TabOrder = 13
   end
 end
