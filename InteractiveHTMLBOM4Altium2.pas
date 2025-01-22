@@ -421,7 +421,6 @@ begin
       name := pcb_primitiveparametersIntf.GetParameterByIndex(argIndex)
         .GetName();
 
-
       begin
         stringList.Add(name);
       end;
@@ -1573,7 +1572,7 @@ Begin
   }
   StopTime := Now();
   Elapsed := Trunc((StopTime - StartTime) * 86400 * 1000);
-  ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
+  // ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
 End;
 
 function ParseArcNative(Board: IPCB_Board; Prim: TObject): String;
@@ -2729,7 +2728,7 @@ Begin
   }
   StopTime := Now();
   Elapsed := Trunc((StopTime - StartTime) * 86400 * 1000);
-  ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
+  // ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
 End;
 
 function GenerConf(Dummy: Integer): String;
