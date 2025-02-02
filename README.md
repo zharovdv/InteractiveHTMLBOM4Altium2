@@ -22,11 +22,6 @@ and can be packaged with documentation of your project or hosted anywhere on the
 
 ![Example](example.gif)
 
-## Installation and Usage
-
-WIP.
-
-
 ## How to Run
 1. Run script from pcb layout.
 2. A GUI will open. Select options and run.
@@ -34,7 +29,3 @@ WIP.
 ![GUI Screenshot](GUI_Example.png)
 
 Note: May take a long time to run depending on board size, board density, & speed of computer. It took my PC 5 seconds to place 200 components and about 50 seconds to place 2000 components on a much more dense board. My PC is relatively fast, so your mileage may vary.
-
-## License and credits
-
-WIP.
