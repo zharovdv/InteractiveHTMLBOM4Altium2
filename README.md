@@ -23,8 +23,20 @@ and can be packaged with documentation of your project or hosted anywhere on the
 ![Example](example.gif)
 
 ## How to Run
-1. Run script from pcb layout.
-2. A GUI will open. Select options and run.
+Plugin could be used in a few ways, as a OutJob or as a Script.
+
+### Script
+1. Download the entire set of files on your computer or clone repository the way your prefer.
+2. Integrate the script into Altium Designer.\
+If you are a newcomer to Altium scripts, [please read the "how to" help page](https://github.com/Altium-Designer-addons/scripts-libraries/blob/master/HowTo_execute_scripts.md).
+3. Run script from pcb layout.
+4. A GUI will open. Select options and run.
+
+### OutJob
+1. Download the entire set of files on your computer or clone repository the way your prefer.
+2. Add InteractiveHTMLBOM4Altium2.pas to Project.
+3. In Output Job File add new Report Output, select InteractiveHTMLBOM4Altium2.pas in Script Output.
+4. Configure and generate content.
 
 ![GUI Screenshot](GUI_Example.png)
 
