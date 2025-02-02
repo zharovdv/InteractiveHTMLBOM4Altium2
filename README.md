@@ -24,6 +24,14 @@ and can be packaged with documentation of your project or hosted anywhere on the
 
 WIP.
 
+## How to use
+_Step 1_: download the add-on you want.
+1. Either clone the entire set of add-ons on your computer (if you're accustomed to Git),
+2. Or download only the add-on you want. You can do so by navigating into a script folder and then clicking the script link from the list.
+
+_Step 2_: integrate the script into Altium Designer and execute it.\
+If you are a newcomer to Altium scripts, [please read the "how to" help page](https://github.com/Altium-Designer-addons/scripts-libraries/blob/master/HowTo_execute_scripts.md). Some developers may also have provided some screen captures or examples of use.
+
 ## License and credits
 
 WIP.
