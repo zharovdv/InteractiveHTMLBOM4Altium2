@@ -41,3 +41,12 @@ If you are a newcomer to Altium scripts, [please read the "how to" help page](ht
 ![GUI Screenshot](GUI_Example.png)
 
 Note: May take a long time to run depending on board size, board density, & speed of computer. It took my PC 5 seconds to place 200 components and about 50 seconds to place 2000 components on a much more dense board. My PC is relatively fast, so your mileage may vary.
+
+## Features
+
+### Format
+Set output format for generated file.
+1. HTML - fully self contained html page, generated without any dependencies, based on [InteractiveHtmlBom](https://github.com/openscopeproject/InteractiveHtmlBom) with custom js
+2. JS - js file for my own needs
+3. JSON - json file in custom format for my own needs
+4. JSON Generic - json file complies to the [schema](https://github.com/openscopeproject/InteractiveHtmlBom/tree/master/InteractiveHtmlBom/ecad/schema), that is needed to generate the [InteractiveHtmlBom](https://github.com/openscopeproject/InteractiveHtmlBom).
