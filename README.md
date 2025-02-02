@@ -20,6 +20,8 @@ dynamic highlight of nets on the board.
 Generated html page is fully self contained, doesn't need internet connection to work
 and can be packaged with documentation of your project or hosted anywhere on the web.
 
+![Example](example.gif)
+
 ## Installation and Usage
 
 WIP.
