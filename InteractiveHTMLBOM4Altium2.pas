@@ -2731,7 +2731,7 @@ Begin
   // ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
 End;
 
-function GenerConf: String;
+function GenerateConfig: String;
 var
   PnPout: TStringList;
   s: TStringList;
@@ -2837,16 +2837,18 @@ begin
   // Result := StringReplace(a, '///'+'SPLITJS', e, MkSet(rfReplaceAll,rfIgnoreCase));
 end;
 
-procedure Gener(pcbdata, config: String);
+procedure GenerateHTML(pcbdata, config: String);
 var
   s: TStringList;
   Data: String;
 begin
+  // Load template into Data variable
   s := TStringList.Create;
   s.LoadFromFile(GetWDFileName('web\ibom.html'));
   Data := s.Text;
   s.Free;
 
+  // Replace template sections with contents of files and/or content from the PCB board
   Data := ReplaceEx(Data, 'CSS', GetWDFileName('web\ibom.css'));
   Data := ReplaceEx(Data, 'USERCSS',
     GetWDFileName('web\user-file-examples\user.css'));
@@ -2869,13 +2871,14 @@ begin
   Data := ReplaceEx(Data, 'USERFOOTER',
     GetWDFileName('web\user-file-examples\userfooter.html'));
 
+  // Save the manipulated HTML to the output file
   s := TStringList.Create;
   s.Text := Data;
   s.SaveToFile(GetOutputFileNameWithExtension('.html'));
   s.Free;
 end;
 
-procedure Gener2(pcbdata, config: String);
+procedure DumpAsJS(pcbdata);
 var
   s: TStringList;
   Data: String;
@@ -2886,7 +2889,7 @@ begin
   s.Free;
 end;
 
-procedure Gener3(pcbdata, config: String);
+procedure DumpAsJSON(pcbdata);
 var
   s: TStringList;
   Data: String;
@@ -3245,30 +3248,33 @@ end;
 
 procedure Generate(Parameters: String);
 var
-  f2, f5, tmp, cfg: String;
+  f2, f5, config, jsString, jsonString: String;
+  generateJS: Boolean;
 begin
   SetState_FromParameters(Parameters);
 
+  generateJS := (FormatIndex < 2);
+
   if FormatIndex = 0 then
   begin
-    tmp := PickAndPlaceOutputEx(FormatIndex < 2);
-    cfg := GenerConf();
-    Gener(tmp, cfg);
+    jsString := PickAndPlaceOutputEx(generateJS);
+    config := GenerateConfig();
+    GenerateHTML(jsString, config);
   end
   else if FormatIndex = 1 then
   begin
-    tmp := PickAndPlaceOutputEx(FormatIndex < 2);
-    Gener2(tmp, cfg);
+    jsString := PickAndPlaceOutputEx(generateJS);
+    DumpAsJS(jsString);
   end
   else if FormatIndex = 2 then
   begin
-    tmp := PickAndPlaceOutputEx(FormatIndex < 2);
-    Gener3(tmp, cfg);
+    jsonString := PickAndPlaceOutputEx(generateJS);
+    DumpAsJSON(jsonString);
   end
   else
   begin
-    tmp := PickAndPlaceOutputExNative();
-    Gener3(tmp, cfg);
+    jsonString := PickAndPlaceOutputExNative();
+    DumpAsJSON(jsonString);
   end;
 
   f2 := GetOutputFileNameWithExtension('.csv');
