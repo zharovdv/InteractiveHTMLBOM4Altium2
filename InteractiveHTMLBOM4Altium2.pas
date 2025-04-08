@@ -178,7 +178,7 @@ begin
   end;
 end;
 
-function GetSeparator(Dummy: Integer): String;
+function GetSeparator: String;
 var
   Separator: TString;
 begin
@@ -229,7 +229,7 @@ begin
   Result := nil;
 end;
 
-function GetFlatDoc(Dummy: Integer): IDocument;
+function GetFlatDoc: IDocument;
 Begin
   FlattenedDoc := CurrProject.DM_DocumentFlattened;
 
@@ -247,7 +247,7 @@ Begin
   Result := FlattenedDoc;
 end;
 
-procedure ListAllFields(Dummy: Integer);
+procedure ListAllFields;
 Var
   CompIndex: Integer; // An Index for pullin out components
   PhysCompCount: Integer; // A count of the number of components in document
@@ -279,7 +279,7 @@ Var
   ComponentVariation: IComponentVariation;
 
 Begin
-  FlattenedDoc := GetFlatDoc(0);
+  FlattenedDoc := GetFlatDoc();
 
   CompCount := FlattenedDoc.DM_ComponentCount;
 
@@ -331,7 +331,7 @@ Var
   ComponentVariation: IComponentVariation;
 
 Begin
-  FlattenedDoc := GetFlatDoc(0);
+  FlattenedDoc := GetFlatDoc();
 
   CompCount := FlattenedDoc.DM_ComponentCount;
 
@@ -468,7 +468,7 @@ begin
   Result := paramsComponent;
 end;
 
-function getpurpur(Dummy: Integer): TStringList;
+function getpurpur: TStringList;
 var
   s: TStringList;
   i: Integer;
@@ -482,7 +482,7 @@ begin
   Result := s;
 end;
 
-function getpurpur2(Dummy: Integer): TStringList;
+function getpurpur2: TStringList;
 var
   s: TStringList;
   i: Integer;
@@ -1339,15 +1339,15 @@ Begin
 
   GetParameters(Board);
 
-  purpur := getpurpur(0);
-  purpur2 := getpurpur2(0);
+  purpur := getpurpur();
+  purpur2 := getpurpur2();
 
   Iterator := Board.BoardIterator_Create;
   Iterator.AddFilter_ObjectSet(MkSet(eComponentObject));
   Iterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
   Iterator.AddFilter_Method(eProcessAll);
 
-  Separator := GetSeparator(0);
+  Separator := GetSeparator();
   Count := 0;
   PnPout := TStringList.Create;
   Component := Iterator.FirstPCBObject;
@@ -2285,7 +2285,7 @@ begin
   PnPout.Free;
 end;
 
-function PickAndPlaceOutputExNative(Dummy: Boolean): String;
+function PickAndPlaceOutputExNative: String;
 var
   Board: IPCB_Board; // document board object
   Component: IPCB_Component; // component object
@@ -2361,15 +2361,15 @@ Begin
 
   GetParameters(Board);
 
-  purpur := getpurpur(0);
-  purpur2 := getpurpur2(0);
+  purpur := getpurpur();
+  purpur2 := getpurpur2();
 
   Iterator := Board.BoardIterator_Create;
   Iterator.AddFilter_ObjectSet(MkSet(eComponentObject));
   Iterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
   Iterator.AddFilter_Method(eProcessAll);
 
-  Separator := GetSeparator(0);
+  Separator := GetSeparator();
   Count := 0;
   PnPout := TStringList.Create;
   Component := Iterator.FirstPCBObject;
@@ -2731,7 +2731,7 @@ Begin
   // ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
 End;
 
-function GenerConf(Dummy: Integer): String;
+function GenerConf: String;
 var
   PnPout: TStringList;
   s: TStringList;
@@ -2752,7 +2752,7 @@ Begin
   PnPout.Add('"show_silkscreen":' + JSONBoolToStr(True) + ',');
   PnPout.Add('"fields":' + '[');
 
-  s := getpurpur(0);
+  s := getpurpur();
   for i := 0 to s.Count - 1 do
   begin
     if i > 0 then
@@ -2897,7 +2897,7 @@ begin
   s.Free;
 end;
 
-procedure SetupProjectVariant(Dummy: Integer);
+procedure SetupProjectVariant;
 Var
   ProjVarIndex: Integer; // Index for iterating through variants
   TempVariant: IProjectVariant; // A temporary Handle for a ProjectVariant
@@ -2976,7 +2976,7 @@ begin
   end;
 end;
 
-Procedure InitializeProject(Dummy: Integer);
+Procedure InitializeProject;
 Var
   ProjVarIndex: Integer; // Index for iterating through variants
 Begin
@@ -2992,7 +2992,7 @@ Begin
     Exit;
 
   // [!!!]
-  SetupProjectVariant(0);
+  SetupProjectVariant();
   {
     // Determine how many Assembly Variants are defined within this focussed Project
     ProjectVariantCount := CurrProject.DM_ProjectVariantCount;
@@ -3011,10 +3011,10 @@ Begin
 
     // Based on current settings on the form, re-write the description of what
     // action will be done when the OK button is pressed
-    ReWriteActionLabel( 0 ); }
+    ReWriteActionLabel(); }
 End;
 
-procedure SetState_Controls(Dummy: Integer);
+procedure SetState_Controls;
 var
   i: Integer;
   tmpn: String;
@@ -3060,7 +3060,7 @@ Procedure SetState_FromParameters(AParametersList: String);
 Var
   s: String;
 Begin
-  InitializeProject(0);
+  InitializeProject();
   {
     UseParameters        := False;
     UseVariants          := False;
@@ -3135,10 +3135,10 @@ Begin
   If GetState_Parameter(AParametersList, 'GroupParametersNames', s) Then
     GroupParametersNames.DelimitedText := s;
 
-  SetState_Controls(0);
+  SetState_Controls();
 End;
 
-procedure GetState_Controls(Dummy: Integer);
+procedure GetState_Controls;
 var
   i: Integer;
 Begin
@@ -3173,9 +3173,9 @@ Begin
   /// ////////////////////////////////////////////
 End;
 
-Function GetState_FromParameters(Dummy: Integer): String;
+Function GetState_FromParameters: String;
 Begin
-  GetState_Controls(0);
+  GetState_Controls();
 
   Result := '';
   { Result := Result +       'ParameterName='        + ParameterName;
@@ -3211,7 +3211,7 @@ begin
   s.Free;
 end;
 
-function GetPluginExecutableFileName(Dummy: Integer): String;
+function GetPluginExecutableFileName: String;
 var
   i: Integer;
   Path: String;
@@ -3252,7 +3252,7 @@ begin
   if FormatIndex = 0 then
   begin
     tmp := PickAndPlaceOutputEx(FormatIndex < 2);
-    cfg := GenerConf(0);
+    cfg := GenerConf();
     Gener(tmp, cfg);
   end
   else if FormatIndex = 1 then
@@ -3267,12 +3267,12 @@ begin
   end
   else
   begin
-    tmp := PickAndPlaceOutputExNative(FormatIndex < 2);
+    tmp := PickAndPlaceOutputExNative();
     Gener3(tmp, cfg);
   end;
 
   f2 := GetOutputFileNameWithExtension('.csv');
-  f5 := GetPluginExecutableFileName(0);
+  f5 := GetPluginExecutableFileName();
 end;
 
 Function PredictOutputFileNames(Parameters: String): String;
@@ -3289,7 +3289,7 @@ Begin
   OutputFileNames.Free;
 End;
 
-function foobar(Dummy: Integer): Integer;
+function foobar: Integer;
 var
   Board: IPCB_Board; // document board object
   Component: IPCB_Component; // component object
@@ -3358,7 +3358,7 @@ Begin
   GetParameters(Board);
 end;
 
-procedure LoadParameterNames(Dummy: Integer);
+procedure LoadParameterNames;
 Begin
   LayerFilterCb.Items.Add('Both');
   LayerFilterCb.Items.Add('Top');
@@ -3369,20 +3369,20 @@ Begin
   FormatCb.Items.Add('JSON');
   FormatCb.Items.Add('JSON Generic');
 
-  foobar(0);
+  foobar();
 End;
 
 procedure Initialize;
 begin
   // Open Workspace, Project, Get Variants, etc.
-  InitializeProject(0);
+  InitializeProject();
 
   // Add Parameters to Parameters ComboBox
-  LoadParameterNames(0);
+  LoadParameterNames();
 
   // Based on current settings on the form, re-write the description of what
   // action will be done when the OK button is pressed
-  // ReWriteActionLabel( 0 );
+  // ReWriteActionLabel();
 end;
 
 Function Configure(Parameters: String): String;
@@ -3392,7 +3392,7 @@ Begin
   SetState_FromParameters(Parameters);
   If MainFrm.ShowModal = mrOK Then
   Begin
-    Result := GetState_FromParameters(0);
+    Result := GetState_FromParameters();
     Close;
   End;
 End;
