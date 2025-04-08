@@ -1965,6 +1965,8 @@ begin
   PadType := 'smd';
 
   PnPout.Add('"layers":' + PadLayer + ',');
+  if PadPin1 then
+    PnPout.Add('"pin1":1,');
   PnPout.Add('"pos":' + '[' + PadX + ', ' + PadY + ']' + ',');
   PnPout.Add('"size":' + '[' + PadWidth + ', ' + PadHeight + ']' + ',');
   PnPout.Add('"angle":' + PadAngle + ',');
@@ -1987,7 +1989,6 @@ begin
     PnPout.Add('"Width":' + (PadWidth) + ',');
     PnPout.Add('"Height":' + (PadHeight) + ',');
     PnPout.Add('"Angle":' + (PadAngle) + ',');
-    PnPout.Add('"Pin1":' + JSONBoolToStr(PadPin1) + ',');
     PnPout.Add('"Net":' + JSONStrToStr(Net));
   *)
 
@@ -3437,3 +3438,6 @@ begin
   // MEM_AllowUnder.Text := TEXTBOXINIT;
   MainFrm.ShowModal;
 end;
+
+
+
