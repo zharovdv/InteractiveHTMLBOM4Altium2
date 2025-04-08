@@ -1274,7 +1274,7 @@ begin
   PnPout.Free;
 end;
 
-function PickAndPlaceOutputEx(Dummy: Boolean): String;
+function PickAndPlaceOutputEx(OutputJS: Boolean): String;
 var
   Board: IPCB_Board; // document board object
   Component: IPCB_Component; // component object
@@ -1352,7 +1352,7 @@ Begin
   PnPout := TStringList.Create;
   Component := Iterator.FirstPCBObject;
 
-  if (Dummy) then
+  if (OutputJS) then
   begin
     PnPout.Add('var altiumbom = ');
   end;
@@ -1554,7 +1554,7 @@ Begin
   PnPout.Add('}');
   PnPout.Add('}');
 
-  if (Dummy) then
+  if (OutputJS) then
   begin
     PnPout.Add(';');
   end;
