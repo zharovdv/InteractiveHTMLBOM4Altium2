@@ -3476,27 +3476,27 @@ begin
 end;
 
 
-procedure TMainFrm.OKBtnClick(Sender: TObject);
-begin
+Procedure TMainFrm.OKBtnClick(Sender: TObject);
+Begin
   If RunAsOutputJob Then
   Begin
-     ModalResult := mrOK;
+    ModalResult := mrOK;
   End Else Begin
-      Generate(GetState_FromParameters());
-      Close;
+    Generate(GetState_FromParameters());
+    Close;
   End;
-end;
+End;
 
 
-procedure TMainFrm.CancelBtnClick(Sender: TObject);
-begin
+Procedure TMainFrm.CancelBtnClick(Sender: TObject);
+Begin
   If RunAsOutputJob Then
   Begin
     ModalResult := mrCancel;
   End Else Begin
     Close;
   End;
-end;
+End;
 
 
 
