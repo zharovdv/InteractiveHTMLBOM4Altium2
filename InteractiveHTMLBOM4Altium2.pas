@@ -3013,10 +3013,7 @@ Begin
     // Choose first variant to start with
     VariantsComboBox.ItemIndex := 0;
     ProjectVariant := CurrProject.DM_ProjectVariants[ 0 ];
-
-    // Based on current settings on the form, re-write the description of what
-    // action will be done when the OK button is pressed
-    ReWriteActionLabel(); }
+  }
 End;
 
 {
@@ -3351,18 +3348,14 @@ Begin
 End;
 
 
-procedure Initialize;
-begin
+Procedure Initialize;
+Begin
   // Open Workspace, Project, Get Variants, etc.
   InitializeProject();
 
   // Add Parameters to Parameters ComboBox
   LoadParameterNames();
-
-  // Based on current settings on the form, re-write the description of what
-  // action will be done when the OK button is pressed
-  // ReWriteActionLabel();
-end;
+End;
 
 
 {.....................................................................................................................}
@@ -3471,12 +3464,14 @@ procedure TMainFrm.OnFormShow(Sender: TObject);
 begin
   If RunAsOutputJob Then
   Begin
-    // Configure does the setup for us
+    // Configure does the initialization for us
+    OKBtn.Caption := 'Save Config';
   End Else Begin
     // This is our entry point if the form is opened directly.
     Initialize;
     SetState_FromParameters('');
     SetState_Controls;
+    OKBtn.Caption := 'Generate';
   End;
 end;
 
