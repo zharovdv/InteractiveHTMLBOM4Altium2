@@ -1275,7 +1275,7 @@ begin
   PnPout.Free;
 end;
 
-function PickAndPlaceOutputEx(OutputJS: Boolean): String;
+function PickAndPlaceOutputNative(OutputJS: Boolean): String;
 var
   Board: IPCB_Board; // document board object
   Component: IPCB_Component; // component object
@@ -1576,7 +1576,7 @@ Begin
   // ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
 End;
 
-function ParseArcNative(Board: IPCB_Board; Prim: TObject): String;
+function ParseArcGeneric(Board: IPCB_Board; Prim: TObject): String;
 var
   PnPout: TStringList;
   EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
@@ -1606,7 +1606,7 @@ begin
   PnPout.Free;
 end;
 
-function ParseTrackNative(Board: IPCB_Board; Prim: TObject;
+function ParseTrackGeneric(Board: IPCB_Board; Prim: TObject;
   NoType: Boolean): String;
 var
   PnPout: TStringList;
@@ -1635,7 +1635,7 @@ begin
   PnPout.Free;
 end;
 
-function ParseVIANative(Board: IPCB_Board; Prim: TObject;
+function ParseVIAGeneric(Board: IPCB_Board; Prim: TObject;
   NoType: Boolean): String;
 var
   PnPout: TStringList;
@@ -1695,7 +1695,7 @@ begin
   PnPout.Free;
 end;
 
-function ParseComponentNative(Board: IPCB_Board; Component: TObject;
+function ParseComponentGeneric(Board: IPCB_Board; Component: TObject;
   purpur, purpur2: TStringList; NoBOM: Boolean): String;
 var
   PnPout: TStringList;
@@ -1799,7 +1799,7 @@ begin
   PnPout.Free;
 end;
 
-function ParsePadNative(Board: IPCB_Board; Prim, Pad: TObject): String;
+function ParsePadGeneric(Board: IPCB_Board; Prim, Pad: TObject): String;
 var
   PnPout: TStringList;
   // Layer, Net: String;
@@ -1998,7 +1998,7 @@ begin
   PnPout.Free;
 end;
 
-function ParseFootprintNative(Board: IPCB_Board; Component: TObject;
+function ParseFootprintGeneric(Board: IPCB_Board; Component: TObject;
   purpur, purpur2: TStringList; NoBOM: Boolean): String;
 var
   PnPout: TStringList;
@@ -2096,7 +2096,7 @@ begin
     If (PadsCount > 1) Then
       PnPout.Add(',');
 
-    PnPout.Add(ParsePadNative(Board, Prim, Pad));
+    PnPout.Add(ParsePadGeneric(Board, Prim, Pad));
 
     // pads :=pads.concat(parsePad(Prim));
     // if (isSMD and (Prim.Layer = eMultiLayer)) then begin
@@ -2115,7 +2115,7 @@ begin
   PnPout.Free;
 end;
 
-function ParseRegionNative(Board: IPCB_Board; Prim: TObject;
+function ParseRegionGeneric(Board: IPCB_Board; Prim: TObject;
   NoType: Boolean): String;
 var
   PnPout: TStringList;
@@ -2203,7 +2203,7 @@ begin
   PnPout.Free;
 end;
 
-function ParsePolyNative(Board: IPCB_Board; Prim: TObject;
+function ParsePolyGeneric(Board: IPCB_Board; Prim: TObject;
   NoType: Boolean): String;
 var
   PnPout: TStringList;
@@ -2287,7 +2287,7 @@ begin
   PnPout.Free;
 end;
 
-function PickAndPlaceOutputExNative: String;
+function PickAndPlaceOutputGeneric: String;
 var
   Board: IPCB_Board; // document board object
   Component: IPCB_Component; // component object
@@ -2401,9 +2401,9 @@ Begin
           Footprints := Footprints + ','; // PnPout.Add(',');
         end;
 
-        Components := Components + ParseComponentNative(Board, Component,
+        Components := Components + ParseComponentGeneric(Board, Component,
           purpur, purpur2, NoBOM);
-        Footprints := Footprints + ParseFootprintNative(Board, Component,
+        Footprints := Footprints + ParseFootprintGeneric(Board, Component,
           purpur, purpur2, NoBOM);
 
         // PnPout.Add(ParseComponent(Board, Component, purpur, purpur2, NoBOM));
@@ -2433,11 +2433,11 @@ Begin
     case (Prim.ObjectId) of
       eArcObject:
         begin
-          Edges := Edges + ParseArcNative(Board, Prim);
+          Edges := Edges + ParseArcGeneric(Board, Prim);
         end;
       eTrackObject:
         begin
-          Edges := Edges + ParseTrackNative(Board, Prim, False);
+          Edges := Edges + ParseTrackGeneric(Board, Prim, False);
         end;
     end;
 
@@ -2548,25 +2548,25 @@ Begin
           begin
             if Length(SilkscreenF) > 0 then
               SilkscreenF := SilkscreenF + ', ';
-            SilkscreenF := SilkscreenF + ParseTrackNative(Board, Prim, False);
+            SilkscreenF := SilkscreenF + ParseTrackGeneric(Board, Prim, False);
           end;
           If (Prim.Layer = eBottomOverlay) Then
           begin
             if Length(SilkscreenB) > 0 then
               SilkscreenB := SilkscreenB + ', ';
-            SilkscreenB := SilkscreenB + ParseTrackNative(Board, Prim, False);
+            SilkscreenB := SilkscreenB + ParseTrackGeneric(Board, Prim, False);
           end;
           If (Prim.Layer = eTopLayer) Then
           begin
             if Length(TracksF) > 0 then
               TracksF := TracksF + ', ';
-            TracksF := TracksF + ParseTrackNative(Board, Prim, True);
+            TracksF := TracksF + ParseTrackGeneric(Board, Prim, True);
           end;
           If (Prim.Layer = eBottomLayer) Then
           begin
             if Length(TracksB) > 0 then
               TracksB := TracksB + ', ';
-            TracksB := TracksB + ParseTrackNative(Board, Prim, True);
+            TracksB := TracksB + ParseTrackGeneric(Board, Prim, True);
           end;
         end;
       eViaObject:
@@ -2576,14 +2576,14 @@ Begin
           begin
             if Length(TracksF) > 0 then
               TracksF := TracksF + ', ';
-            TracksF := TracksF + ParseVIANative(Board, Prim, True);
+            TracksF := TracksF + ParseVIAGeneric(Board, Prim, True);
           end;
 
           // If (Prim.Layer = eBottomLayer) Then
           begin
             if Length(TracksB) > 0 then
               TracksB := TracksB + ', ';
-            TracksB := TracksB + ParseVIANative(Board, Prim, True);
+            TracksB := TracksB + ParseVIAGeneric(Board, Prim, True);
           end;
         end;
       eRegionObject:
@@ -2592,25 +2592,25 @@ Begin
           begin
             if Length(SilkscreenF) > 0 then
               SilkscreenF := SilkscreenF + ', ';
-            SilkscreenF := SilkscreenF + ParseRegionNative(Board, Prim, False);
+            SilkscreenF := SilkscreenF + ParseRegionGeneric(Board, Prim, False);
           end;
           If (Prim.Layer = eBottomOverlay) Then
           begin
             if Length(SilkscreenB) > 0 then
               SilkscreenB := SilkscreenB + ', ';
-            SilkscreenB := SilkscreenB + ParseRegionNative(Board, Prim, False);
+            SilkscreenB := SilkscreenB + ParseRegionGeneric(Board, Prim, False);
           end;
           If (Prim.Layer = eTopLayer) Then
           begin
             if Length(ZonesF) > 0 then
               ZonesF := ZonesF + ', ';
-            ZonesF := ZonesF + ParseRegionNative(Board, Prim, True);
+            ZonesF := ZonesF + ParseRegionGeneric(Board, Prim, True);
           end;
           If (Prim.Layer = eBottomLayer) Then
           begin
             if Length(ZonesB) > 0 then
               ZonesB := ZonesB + ', ';
-            ZonesB := ZonesB + ParseRegionNative(Board, Prim, True);
+            ZonesB := ZonesB + ParseRegionGeneric(Board, Prim, True);
           end;
         end;
       ePolyObject:
@@ -2619,25 +2619,25 @@ Begin
           begin
             if Length(SilkscreenF) > 0 then
               SilkscreenF := SilkscreenF + ', ';
-            SilkscreenF := SilkscreenF + ParsePolyNative(Board, Prim, False);
+            SilkscreenF := SilkscreenF + ParsePolyGeneric(Board, Prim, False);
           end;
           If (Prim.Layer = eBottomOverlay) Then
           begin
             if Length(SilkscreenB) > 0 then
               SilkscreenB := SilkscreenB + ', ';
-            SilkscreenB := SilkscreenB + ParsePolyNative(Board, Prim, False);
+            SilkscreenB := SilkscreenB + ParsePolyGeneric(Board, Prim, False);
           end;
           If (Prim.Layer = eTopLayer) Then
           begin
             if Length(ZonesF) > 0 then
               ZonesF := ZonesF + ', ';
-            ZonesF := ZonesF + ParsePolyNative(Board, Prim, True);
+            ZonesF := ZonesF + ParsePolyGeneric(Board, Prim, True);
           end;
           If (Prim.Layer = eBottomLayer) Then
           begin
             if Length(ZonesB) > 0 then
               ZonesB := ZonesB + ', ';
-            ZonesB := ZonesB + ParsePolyNative(Board, Prim, True);
+            ZonesB := ZonesB + ParsePolyGeneric(Board, Prim, True);
           end;
         end;
     end;
@@ -3435,17 +3435,22 @@ Begin
 
   If FormatIndex = 0 Then
   Begin
-    jsString := PickAndPlaceOutputEx(generateJS);
+    // Generate HTML file
+    jsString := PickAndPlaceOutputNative(generateJS);
     config := GenerateConfig();
     GenerateHTML(jsString, config);
   End Else If FormatIndex = 1 Then Begin
-    jsString := PickAndPlaceOutputEx(generateJS);
+    // Generate JSON in JavaScript file
+    jsString := PickAndPlaceOutputNative(generateJS);
     DumpAsJS(jsString);
   End Else If FormatIndex = 2 Then Begin
-    jsonString := PickAndPlaceOutputEx(generateJS);
+    // Generate native JSON file
+    jsonString := PickAndPlaceOutputNative(generateJS);
     DumpAsJSON(jsonString);
   End Else Begin
-    jsonString := PickAndPlaceOutputExNative();
+    // Generate generic JSON file, according to
+    // https://github.com/openscopeproject/InteractiveHtmlBom/blob/master/InteractiveHtmlBom/ecad/schema/genericjsonpcbdata_v1.schema
+    jsonString := PickAndPlaceOutputGeneric();
     DumpAsJSON(jsonString);
   End;
 End;
@@ -3454,6 +3459,7 @@ End;
 {.....................................................................................................................}
 {.                                                     Form Events                                                   .}
 {.....................................................................................................................}
+
 
 {
   OnFormShow is called when the form is shown, regardless if the form is shown
