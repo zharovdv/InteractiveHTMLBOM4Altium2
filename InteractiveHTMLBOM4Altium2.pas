@@ -3431,40 +3431,31 @@ End;
   It generates an output file(s) without showing the form. The settings to use are
   supplied from OutJob as a parameter string (whose format we can define).
 }
-procedure Generate(Parameters: String);
-var
-  f2, f5, config, jsString, jsonString: String;
+Procedure Generate(Parameters: String);
+Var
+  config, jsString, jsonString: String;
   generateJS: Boolean;
-begin
+Begin
   SetState_FromParameters(Parameters);
 
   generateJS := (FormatIndex < 2);
 
-  if FormatIndex = 0 then
-  begin
+  If FormatIndex = 0 Then
+  Begin
     jsString := PickAndPlaceOutputEx(generateJS);
     config := GenerateConfig();
     GenerateHTML(jsString, config);
-  end
-  else if FormatIndex = 1 then
-  begin
+  End Else If FormatIndex = 1 Then Begin
     jsString := PickAndPlaceOutputEx(generateJS);
     DumpAsJS(jsString);
-  end
-  else if FormatIndex = 2 then
-  begin
+  End Else If FormatIndex = 2 Then Begin
     jsonString := PickAndPlaceOutputEx(generateJS);
     DumpAsJSON(jsonString);
-  end
-  else
-  begin
+  End Else Begin
     jsonString := PickAndPlaceOutputExNative();
     DumpAsJSON(jsonString);
-  end;
-
-  f2 := GetOutputFileNameWithExtension('.csv');
-  f5 := GetPluginExecutableFileName();
-end;
+  End;
+End;
 
 
 {.....................................................................................................................}
