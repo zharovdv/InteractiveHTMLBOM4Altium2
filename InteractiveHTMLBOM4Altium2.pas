@@ -3379,9 +3379,10 @@ end;
 Function PredictOutputFileNames(Parameters: String): String;
 Var
   OutputFileNames: TStringList;
-  f1, f2, f3: string;
 Begin
+  // Populate the global state variables from the Parameters string
   SetState_FromParameters(Parameters);
+
   OutputFileNames := TStringList.Create;
   OutputFileNames.Delimiter := '|';
   OutputFileNames.StrictDelimiter := True;
