@@ -3385,7 +3385,20 @@ Begin
   OutputFileNames := TStringList.Create;
   OutputFileNames.Delimiter := '|';
   OutputFileNames.StrictDelimiter := True;
-  OutputFileNames.Add(GetOutputFileNameWithExtension('.pdf'));
+
+  If FormatIndex = 0 Then
+  Begin
+    OutputFileNames.Add(GetOutputFileNameWithExtension('.html'));
+  End Else If FormatIndex = 1 Then Begin
+    OutputFileNames.Add(GetOutputFileNameWithExtension('.js'));
+  End Else If FormatIndex = 2 Then Begin
+    OutputFileNames.Add(GetOutputFileNameWithExtension('.json'));
+  End Else If FormatIndex = 3 Then Begin
+    OutputFileNames.Add(GetOutputFileNameWithExtension('.json'));
+  End Else Begin
+    OutputFileNames.Add(GetOutputFileNameWithExtension('.unknown_format_choice'));
+  End;
+
   Result := OutputFileNames.DelimitedText;
   OutputFileNames.Free;
 End;
@@ -3497,5 +3510,6 @@ begin
     Close;
   End;
 end;
+
 
 
