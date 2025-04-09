@@ -29,6 +29,7 @@ Var
   ValueParameterName: String;
   ColumnsParametersNames: TStringList;
   GroupParametersNames: TStringList;
+  WindowIsModal: Boolean;
 
 Function GetOutputFileNameWithExtension(Ext: String): String;
 Begin
@@ -3018,6 +3019,9 @@ Begin
     ReWriteActionLabel(); }
 End;
 
+{
+ Transfers the global state variables into the Form object values
+}
 procedure SetState_Controls;
 var
   i: Integer;
@@ -3060,11 +3064,19 @@ Begin
   }
 End;
 
+{
+  "State" is the values in the global variables, defined at the top.
+  At the very first call to Configure, `Paramters` is empty, thus the defaults
+  defined here come into effect. Otherwise, we overwrite each default value
+  with what we find in the Paramters list.
+}
 Procedure SetState_FromParameters(AParametersList: String);
 Var
   s: String;
 Begin
   InitializeProject();
+
+  // Defaults definition
   {
     UseParameters        := False;
     UseVariants          := False;
@@ -3098,6 +3110,7 @@ Begin
   GroupParametersNames.Add('Value');
   GroupParametersNames.Add('[Footprint]');
 
+  // Overwrite defaults (if values are provided in Parameter list)
   {
     If GetState_Parameter(AParametersList, 'ParameterName'       , S) Then ParameterName        := S;
     If GetState_Parameter(AParametersList, 'VariantName'         , S) Then VariantName          := S;
@@ -3139,9 +3152,13 @@ Begin
   If GetState_Parameter(AParametersList, 'GroupParametersNames', s) Then
     GroupParametersNames.DelimitedText := s;
 
+  // Transfer global variable state into Form objects
   SetState_Controls();
 End;
 
+{
+ Transfers the Form object values into the global state variables
+}
 procedure GetState_Controls;
 var
   i: Integer;
@@ -3416,6 +3433,7 @@ Begin
   Result := '';
   Initialize;
   SetState_FromParameters(Parameters);
+  WindowIsModal := True;
   If MainFrm.ShowModal = mrOK Then
   Begin
     Result := GetState_FromParameters();
@@ -3425,19 +3443,31 @@ End;
 
 procedure TMainFrm.OKBtnClick(Sender: TObject);
 begin
-  ModalResult := mrOK;
+  If WindowIsModal Then
+  Begin
+     ModalResult := mrOK;
+  End
+  Else
+  Begin
+      Generate(GetState_FromParameters());
+      Close;
+  End;
 end;
 
 procedure TMainFrm.CancelBtnClick(Sender: TObject);
 begin
-  ModalResult := mrCancel;
+  If WindowIsModal Then
+    ModalResult := mrCancel
+  Else
+    Close;
 end;
 
-procedure RunGUI;
+procedure TMainFrm.OnFormShow(Sender: TObject);
 begin
-  // MEM_AllowUnder.Text := TEXTBOXINIT;
-  MainFrm.ShowModal;
+  If not WindowIsModal Then
+  Begin
+    Initialize;
+    SetState_FromParameters('');
+    SetState_Controls;
+  End;
 end;
-
-
-
