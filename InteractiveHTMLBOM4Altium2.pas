@@ -31,6 +31,47 @@ Var
   GroupParametersNames: TStringList;
   RunAsOutputJob: Boolean;
 
+
+procedure SetupProjectVariant; forward;
+
+{.....................................................................................................................}
+{.                                            Path and Filename Handling                                             .}
+{.....................................................................................................................}
+
+
+function GetPluginExecutableFileName: String;
+var
+  i: Integer;
+  Path: String;
+  CurrentDir: String;
+  Document: IDocument;
+begin
+  Result := PluginExecutable;
+  if not IsPathRelative(PluginExecutable) then
+    Exit;
+
+  Result := ExpandFileName(PluginExecutable);
+
+  for i := 0 to CurrProject.DM_LogicalDocumentCount - 1 do
+  begin
+    Document := CurrProject.DM_LogicalDocuments(i);
+    if Document.DM_FileName <> 'GOSTBOMAltium.pas' then
+      continue;
+
+    Path := ExtractFilePath(Document.DM_FullPath);
+    if not DirectoryExists(Path) then
+      continue;
+
+    CurrentDir := GetCurrentDir;
+    if not SetCurrentDir(Path) then
+      continue;
+
+    Result := ExpandFileName(PluginExecutable);
+    SetCurrentDir(CurrentDir);
+  end;
+end;
+
+
 Function GetOutputFileNameWithExtension(Ext: String): String;
 Begin
   If TargetFolder = '' Then
@@ -124,60 +165,6 @@ begin
 
 end; { end FindProjectPcbDocFile() }
 
-Function UseItEx(_CurrComponent, _CurrPart: TString;
-  _ProjectVariant: IProjectVariant): Boolean;
-var
-  // _CurrPart: IPart;
-  ComponentVariation: IComponentVariation;
-begin
-  // [!!!] UGLY
-  // _CurrPart := _CurrComponent.DM_SubParts[0];
-  if _ProjectVariant = nil then
-  begin
-    if pos('@', _CurrComponent) <> 0 then
-    begin
-      Result := False;
-    end
-    else
-    begin
-      Result := True;
-    end;
-  end;
-
-  if _ProjectVariant <> nil then
-  begin
-    ComponentVariation := _ProjectVariant.DM_FindComponentVariationByDesignator
-      (_CurrPart);
-    if ComponentVariation <> nil then
-    begin
-      if _CurrComponent <> ComponentVariation.DM_UniqueId + '@' +
-        _ProjectVariant.DM_Description then
-      begin
-        Result := False;
-      end
-      else
-      begin
-        Result := True;
-      end;
-      // [!!!] Never
-      if ComponentVariation.DM_VariationKind = eVariation_NotFitted then
-      begin
-        Result := False;
-      end;
-    end
-    else
-    begin
-      if pos('@', _CurrComponent) <> 0 then
-      begin
-        Result := False;
-      end
-      else
-      begin
-        Result := True;
-      end;
-    end;
-  end;
-end;
 
 function GetSeparator: String;
 var
@@ -435,7 +422,7 @@ begin
   GroupParametersClb.Items.AddStrings(stringList);
 end;
 
-function getparamc(comp: IPCB_Component): Integer;
+function GetComponentParameters(comp: IPCB_Component): TStringList;
 var
   stateText: string;
   str1: string;
@@ -496,6 +483,82 @@ begin
   end;
   Result := s;
 end;
+
+
+{.....................................................................................................................}
+{.                                            Generation Helper Functions                                            .}
+{.....................................................................................................................}
+
+
+{
+  ComponentIsFittedInCurrentVariant cross-checks the ComponentId and Designator
+  against the current project variant (an @ in the ComponentId indicates that
+  the component is part of a variant). Only components that are part of the
+  current variation (and don't have a DNP directive) are included in the
+  output.
+}
+Function ComponentIsFittedInCurrentVariant(ComponentId, Designator: TString;
+  _ProjectVariant: IProjectVariant): Boolean;
+var
+  // Designator: IPart;
+  ComponentVariation: IComponentVariation;
+begin
+  // [!!!] UGLY
+  // Designator := ComponentId.DM_SubParts[0];
+  if _ProjectVariant = nil then
+  begin
+    if pos('@', ComponentId) <> 0 then
+    begin
+      // Exclude components that are part of a variant but we're not inside a variant
+      Result := False;
+    end else begin
+      // Component is not part of a variant, and we're not inside a variant
+      Result := True;
+    end;
+  end;
+
+  if _ProjectVariant <> nil then
+  begin
+    ComponentVariation := _ProjectVariant.DM_FindComponentVariationByDesignator
+      (Designator);
+    if ComponentVariation <> nil then
+    begin
+      if ComponentId <> ComponentVariation.DM_UniqueId + '@' +
+        _ProjectVariant.DM_Description then
+      begin
+        // Exclude component that is part of another variant
+        Result := False;
+      end else begin
+        // Include component that is part of the current variant
+        Result := True;
+      end;
+      // [!!!] Never
+      if ComponentVariation.DM_VariationKind = eVariation_NotFitted then
+      begin
+        // In any case, exclude components that are not fitted
+        Result := False;
+      end;
+    end
+    else
+    begin
+      if pos('@', ComponentId) <> 0 then
+      begin
+        // Component has a variant-specific ID, but there is no variation defined for it.
+        // Possibly belongs to a different variant --> exclude it.
+        Result := False;
+      end else begin
+        // Component has no variant-specific ID, and no variation is defined --> include it.
+        Result := True;
+      end;
+    end;
+  end;
+end;
+
+
+{.....................................................................................................................}
+{.                                               Native JSON Generation                                              .}
+{.....................................................................................................................}
+
 
 function ParseArc(Board: IPCB_Board; Prim: TObject): String;
 var
@@ -1210,7 +1273,7 @@ begin
   PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
   PnPout.Add('"Footprint":' + JSONStrToStr(Component.Pattern) + ',');
 
-  sl := getparamc(Component);
+  sl := GetComponentParameters(Component);
 
   PnPout.Add('"PartNumber":' + JSONStrToStr
     (sl.Values[ValueParameterName]) + ',');
@@ -1373,7 +1436,7 @@ Begin
     end;
 
     // Print Pick&Place data of SMD components to file
-    if UseItEx(Component.SourceUniqueId, Component.SourceDesignator,
+    if ComponentIsFittedInCurrentVariant(Component.SourceUniqueId, Component.SourceDesignator,
       ProjectVariant) then
       if (LayerFilterIndex = 0) or
         ((LayerFilterCb = 1) and (Component.Layer = eTopLayer)) or
@@ -1576,6 +1639,12 @@ Begin
   // ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
 End;
 
+
+{.....................................................................................................................}
+{.                                              Generic JSON Generation                                              .}
+{.....................................................................................................................}
+
+
 function ParseArcGeneric(Board: IPCB_Board; Prim: TObject): String;
 var
   PnPout: TStringList;
@@ -1763,7 +1832,7 @@ begin
 
   (*
 
-    sl := getparamc(Component);
+    sl := GetComponentParameters(Component);
 
     PnPout.Add('"PartNumber":' + JSONStrToStr
     (sl.Values[ValueParameterName]) + ',');
@@ -2070,7 +2139,7 @@ begin
     PnPout.Add('"Designator":' + JSONStrToStr(Component.SourceDesignator) + ',');
     PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
 
-    sl := getparamc(Component);
+    sl := GetComponentParameters(Component);
 
     PnPout.Add('"PartNumber":' + JSONStrToStr
     (sl.Values[ValueParameterName]) + ',');
@@ -2388,7 +2457,7 @@ Begin
     end;
 
     // Print Pick&Place data of SMD components to file
-    if UseItEx(Component.SourceUniqueId, Component.SourceDesignator,
+    if ComponentIsFittedInCurrentVariant(Component.SourceUniqueId, Component.SourceDesignator,
       ProjectVariant) then
       if (LayerFilterIndex = 0) or
         ((LayerFilterCb = 1) and (Component.Layer = eTopLayer)) or
@@ -2733,6 +2802,10 @@ Begin
   // ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
 End;
 
+{.....................................................................................................................}
+{.                                              Generic JSON Generation                                              .}
+{.....................................................................................................................}
+
 function GenerateConfig: String;
 var
   PnPout: TStringList;
@@ -2839,6 +2912,12 @@ begin
   // Result := StringReplace(a, '///'+'SPLITJS', e, MkSet(rfReplaceAll,rfIgnoreCase));
 end;
 
+
+{.....................................................................................................................}
+{.                                               Output File Generation                                              .}
+{.....................................................................................................................}
+
+
 procedure GenerateHTML(pcbdata, config: String);
 var
   s: TStringList;
@@ -2902,84 +2981,18 @@ begin
   s.Free;
 end;
 
-procedure SetupProjectVariant;
-Var
-  ProjVarIndex: Integer; // Index for iterating through variants
-  TempVariant: IProjectVariant; // A temporary Handle for a ProjectVariant
+{.....................................................................................................................}
+{.                                                   State Handling                                                  .}
+{.....................................................................................................................}
+
+Procedure Initialize;
 Begin
-  ProjectVariant := CurrProject.DM_CurrentProjectVariant;
-  {
-    // Determine how many ProjectVariants are defined within this focussed Project
-    ProjectVariantCount := CurrProject.DM_ProjectVariantCount;
-    ProjectVariant := Nil;
+  // Open Workspace, Project, Get Variants, etc.
+  InitializeProject();
 
-    // Find the Project Variant matching the Variants Combo-Box
-    For ProjVarIndex := 0 To ProjectVariantCount - 1 Do
-    Begin
-    // Fetch the currently indexed project Assembly Variant
-    TempVariant := CurrProject.DM_ProjectVariants[ ProjVarIndex ];
-
-    // See if the Description matches that in the Variants Combo-Box
-    If (VariantName = TempVariant.DM_Description)
-    Then ProjectVariant := CurrProject.DM_ProjectVariants[ ProjVarIndex ];
-    End;
-  }
+  // Add Parameters to Parameters ComboBox
+  LoadParameterNames();
 End;
-
-Function UseIt(_CurrComponent: IComponent;
-  _ProjectVariant: IProjectVariant): Boolean;
-var
-  _CurrPart: IPart;
-  ComponentVariation: IComponentVariation;
-begin
-  // [!!!] UGLY
-  _CurrPart := _CurrComponent.DM_SubParts[0];
-  if _ProjectVariant = nil then
-  begin
-    if pos('@', _CurrComponent.DM_UniqueId) <> 0 then
-    begin
-      Result := False;
-    end
-    else
-    begin
-      Result := True;
-    end;
-  end;
-
-  if _ProjectVariant <> nil then
-  begin
-    ComponentVariation := _ProjectVariant.DM_FindComponentVariationByDesignator
-      (_CurrPart.DM_PhysicalDesignator);
-    if ComponentVariation <> nil then
-    begin
-      if _CurrComponent.DM_UniqueId <> ComponentVariation.DM_UniqueId + '@' +
-        _ProjectVariant.DM_Description then
-      begin
-        Result := False;
-      end
-      else
-      begin
-        Result := True;
-      end;
-      // [!!!] Never
-      if ComponentVariation.DM_VariationKind = eVariation_NotFitted then
-      begin
-        Result := False;
-      end;
-    end
-    else
-    begin
-      if pos('@', _CurrComponent.DM_UniqueId) <> 0 then
-      begin
-        Result := False;
-      end
-      else
-      begin
-        Result := True;
-      end;
-    end;
-  end;
-end;
 
 Procedure InitializeProject;
 Var
@@ -3220,6 +3233,30 @@ Begin
     GroupParametersNames.DelimitedText;
 End;
 
+procedure SetupProjectVariant;
+Var
+  ProjVarIndex: Integer; // Index for iterating through variants
+  TempVariant: IProjectVariant; // A temporary Handle for a ProjectVariant
+Begin
+  ProjectVariant := CurrProject.DM_CurrentProjectVariant;
+  {
+    // Determine how many ProjectVariants are defined within this focussed Project
+    ProjectVariantCount := CurrProject.DM_ProjectVariantCount;
+    ProjectVariant := Nil;
+
+    // Find the Project Variant matching the Variants Combo-Box
+    For ProjVarIndex := 0 To ProjectVariantCount - 1 Do
+    Begin
+    // Fetch the currently indexed project Assembly Variant
+    TempVariant := CurrProject.DM_ProjectVariants[ ProjVarIndex ];
+
+    // See if the Description matches that in the Variants Combo-Box
+    If (VariantName = TempVariant.DM_Description)
+    Then ProjectVariant := CurrProject.DM_ProjectVariants[ ProjVarIndex ];
+    End;
+  }
+End;
+
 procedure CreateFile(F: string);
 var
   s: TStringList;
@@ -3229,40 +3266,162 @@ begin
   s.Free;
 end;
 
-function GetPluginExecutableFileName: String;
-var
-  i: Integer;
-  Path: String;
-  CurrentDir: String;
-  Document: IDocument;
+
+{.....................................................................................................................}
+{.                                                OutputJob Interface                                                .}
+{.....................................................................................................................}
+
+
+{
+  PredictOutputFileNames should return the full path names of all files that
+  will be generated by the Generate procedure, without actually generating
+  them. The file names should be returned via the Result string, separated by
+  '|' characters.
+}
+Function PredictOutputFileNames(Parameters: String): String;
+Var
+  OutputFileNames: TStringList;
+Begin
+  // Populate the global state variables from the Parameters string
+  SetState_FromParameters(Parameters);
+
+  OutputFileNames := TStringList.Create;
+  OutputFileNames.Delimiter := '|';
+  OutputFileNames.StrictDelimiter := True;
+
+  If FormatIndex = 0 Then
+  Begin
+    OutputFileNames.Add(GetOutputFileNameWithExtension('.html'));
+  End Else If FormatIndex = 1 Then Begin
+    OutputFileNames.Add(GetOutputFileNameWithExtension('.js'));
+  End Else If FormatIndex = 2 Then Begin
+    OutputFileNames.Add(GetOutputFileNameWithExtension('.json'));
+  End Else If FormatIndex = 3 Then Begin
+    OutputFileNames.Add(GetOutputFileNameWithExtension('.json'));
+  End Else Begin
+    OutputFileNames.Add(GetOutputFileNameWithExtension('.unknown_format_choice'));
+  End;
+
+  Result := OutputFileNames.DelimitedText;
+  OutputFileNames.Free;
+End;
+
+{
+  Configure is the entry point for the right-click Configure command in an
+  OutJob document. It shows the form with the supplied settings (encoded as a
+  parameter string), and, if the user clicks OK, it returns the new settings.
+  These new settings will be saved by OutJob, and applied in subsequent
+  invocations of the Generate procedure.
+}
+Function Configure(Parameters: String): String;
+Begin
+  Result := '';
+  Initialize;
+  SetState_FromParameters(Parameters);
+  RunAsOutputJob := True;
+  If MainFrm.ShowModal = mrOK Then
+  Begin
+    Result := GetState_FromParameters();
+    Close;
+  End;
+End;
+
+{
+  Generate is the entry point when running a Script Output from an OutJob document.
+  It generates an output file(s) without showing the form. The settings to use are
+  supplied from OutJob as a parameter string (whose format we can define).
+}
+Procedure Generate(Parameters: String);
+Var
+  config, jsString, jsonString: String;
+  generateJS: Boolean;
+Begin
+  SetState_FromParameters(Parameters);
+
+  generateJS := (FormatIndex < 2);
+
+  If FormatIndex = 0 Then
+  Begin
+    // Generate HTML file
+    jsString := PickAndPlaceOutputNative(generateJS);
+    config := GenerateConfig();
+    GenerateHTML(jsString, config);
+  End Else If FormatIndex = 1 Then Begin
+    // Generate JSON in JavaScript file
+    jsString := PickAndPlaceOutputNative(generateJS);
+    DumpAsJS(jsString);
+  End Else If FormatIndex = 2 Then Begin
+    // Generate native JSON file
+    jsonString := PickAndPlaceOutputNative(generateJS);
+    DumpAsJSON(jsonString);
+  End Else Begin
+    // Generate generic JSON file, according to
+    // https://github.com/openscopeproject/InteractiveHtmlBom/blob/master/InteractiveHtmlBom/ecad/schema/genericjsonpcbdata_v1.schema
+    jsonString := PickAndPlaceOutputGeneric();
+    DumpAsJSON(jsonString);
+  End;
+End;
+
+
+{.....................................................................................................................}
+{.                                                     Form Events                                                   .}
+{.....................................................................................................................}
+
+
+{
+  OnFormShow is called when the form is shown, regardless if the form is shown
+  by the OutJob via the Configure procedure, or directly opened by the Altium
+  script engine.
+}
+procedure TMainFrm.OnFormShow(Sender: TObject);
 begin
-  Result := PluginExecutable;
-  if not IsPathRelative(PluginExecutable) then
-    Exit;
-
-  Result := ExpandFileName(PluginExecutable);
-
-  for i := 0 to CurrProject.DM_LogicalDocumentCount - 1 do
-  begin
-    Document := CurrProject.DM_LogicalDocuments(i);
-    if Document.DM_FileName <> 'GOSTBOMAltium.pas' then
-      continue;
-
-    Path := ExtractFilePath(Document.DM_FullPath);
-    if not DirectoryExists(Path) then
-      continue;
-
-    CurrentDir := GetCurrentDir;
-    if not SetCurrentDir(Path) then
-      continue;
-
-    Result := ExpandFileName(PluginExecutable);
-    SetCurrentDir(CurrentDir);
-  end;
+  If RunAsOutputJob Then
+  Begin
+    // Configure does the initialization for us
+    OKBtn.Caption := 'Save Config';
+  End Else Begin
+    // This is our entry point if the form is opened directly.
+    Initialize;
+    SetState_FromParameters('');
+    SetState_Controls;
+    OKBtn.Caption := 'Generate';
+  End;
 end;
 
+Procedure TMainFrm.OKBtnClick(Sender: TObject);
+Begin
+  If RunAsOutputJob Then
+  Begin
+    ModalResult := mrOK;
+  End Else Begin
+    Generate(GetState_FromParameters());
+    Close;
+  End;
+End;
 
+Procedure TMainFrm.CancelBtnClick(Sender: TObject);
+Begin
+  If RunAsOutputJob Then
+  Begin
+    ModalResult := mrCancel;
+  End Else Begin
+    Close;
+  End;
+End;
 
+procedure LoadParameterNames;
+Begin
+  LayerFilterCb.Items.Add('Both');
+  LayerFilterCb.Items.Add('Top');
+  LayerFilterCb.Items.Add('Bottom');
+
+  FormatCb.Items.Add('HTML');
+  FormatCb.Items.Add('JS');
+  FormatCb.Items.Add('JSON');
+  FormatCb.Items.Add('JSON Generic');
+
+  foobar();
+End;
 
 function foobar: Integer;
 var
@@ -3332,177 +3491,3 @@ Begin
 
   GetParameters(Board);
 end;
-
-procedure LoadParameterNames;
-Begin
-  LayerFilterCb.Items.Add('Both');
-  LayerFilterCb.Items.Add('Top');
-  LayerFilterCb.Items.Add('Bottom');
-
-  FormatCb.Items.Add('HTML');
-  FormatCb.Items.Add('JS');
-  FormatCb.Items.Add('JSON');
-  FormatCb.Items.Add('JSON Generic');
-
-  foobar();
-End;
-
-
-Procedure Initialize;
-Begin
-  // Open Workspace, Project, Get Variants, etc.
-  InitializeProject();
-
-  // Add Parameters to Parameters ComboBox
-  LoadParameterNames();
-End;
-
-
-{.....................................................................................................................}
-{.                                                OutputJob Interface                                                .}
-{.....................................................................................................................}
-
-
-{
-  PredictOutputFileNames should return the full path names of all files that
-  will be generated by the Generate procedure, without actually generating
-  them. The file names should be returned via the Result string, separated by
-  '|' characters.
-}
-Function PredictOutputFileNames(Parameters: String): String;
-Var
-  OutputFileNames: TStringList;
-Begin
-  // Populate the global state variables from the Parameters string
-  SetState_FromParameters(Parameters);
-
-  OutputFileNames := TStringList.Create;
-  OutputFileNames.Delimiter := '|';
-  OutputFileNames.StrictDelimiter := True;
-
-  If FormatIndex = 0 Then
-  Begin
-    OutputFileNames.Add(GetOutputFileNameWithExtension('.html'));
-  End Else If FormatIndex = 1 Then Begin
-    OutputFileNames.Add(GetOutputFileNameWithExtension('.js'));
-  End Else If FormatIndex = 2 Then Begin
-    OutputFileNames.Add(GetOutputFileNameWithExtension('.json'));
-  End Else If FormatIndex = 3 Then Begin
-    OutputFileNames.Add(GetOutputFileNameWithExtension('.json'));
-  End Else Begin
-    OutputFileNames.Add(GetOutputFileNameWithExtension('.unknown_format_choice'));
-  End;
-
-  Result := OutputFileNames.DelimitedText;
-  OutputFileNames.Free;
-End;
-
-
-{
-  Configure is the entry point for the right-click Configure command in an
-  OutJob document. It shows the form with the supplied settings (encoded as a
-  parameter string), and, if the user clicks OK, it returns the new settings.
-  These new settings will be saved by OutJob, and applied in subsequent
-  invocations of the Generate procedure.
-}
-Function Configure(Parameters: String): String;
-Begin
-  Result := '';
-  Initialize;
-  SetState_FromParameters(Parameters);
-  RunAsOutputJob := True;
-  If MainFrm.ShowModal = mrOK Then
-  Begin
-    Result := GetState_FromParameters();
-    Close;
-  End;
-End;
-
-
-{
-  Generate is the entry point when running a Script Output from an OutJob document.
-  It generates an output file(s) without showing the form. The settings to use are
-  supplied from OutJob as a parameter string (whose format we can define).
-}
-Procedure Generate(Parameters: String);
-Var
-  config, jsString, jsonString: String;
-  generateJS: Boolean;
-Begin
-  SetState_FromParameters(Parameters);
-
-  generateJS := (FormatIndex < 2);
-
-  If FormatIndex = 0 Then
-  Begin
-    // Generate HTML file
-    jsString := PickAndPlaceOutputNative(generateJS);
-    config := GenerateConfig();
-    GenerateHTML(jsString, config);
-  End Else If FormatIndex = 1 Then Begin
-    // Generate JSON in JavaScript file
-    jsString := PickAndPlaceOutputNative(generateJS);
-    DumpAsJS(jsString);
-  End Else If FormatIndex = 2 Then Begin
-    // Generate native JSON file
-    jsonString := PickAndPlaceOutputNative(generateJS);
-    DumpAsJSON(jsonString);
-  End Else Begin
-    // Generate generic JSON file, according to
-    // https://github.com/openscopeproject/InteractiveHtmlBom/blob/master/InteractiveHtmlBom/ecad/schema/genericjsonpcbdata_v1.schema
-    jsonString := PickAndPlaceOutputGeneric();
-    DumpAsJSON(jsonString);
-  End;
-End;
-
-
-{.....................................................................................................................}
-{.                                                     Form Events                                                   .}
-{.....................................................................................................................}
-
-
-{
-  OnFormShow is called when the form is shown, regardless if the form is shown
-  by the OutJob via the Configure procedure, or directly opened by the Altium
-  script engine.
-}
-procedure TMainFrm.OnFormShow(Sender: TObject);
-begin
-  If RunAsOutputJob Then
-  Begin
-    // Configure does the initialization for us
-    OKBtn.Caption := 'Save Config';
-  End Else Begin
-    // This is our entry point if the form is opened directly.
-    Initialize;
-    SetState_FromParameters('');
-    SetState_Controls;
-    OKBtn.Caption := 'Generate';
-  End;
-end;
-
-
-Procedure TMainFrm.OKBtnClick(Sender: TObject);
-Begin
-  If RunAsOutputJob Then
-  Begin
-    ModalResult := mrOK;
-  End Else Begin
-    Generate(GetState_FromParameters());
-    Close;
-  End;
-End;
-
-
-Procedure TMainFrm.CancelBtnClick(Sender: TObject);
-Begin
-  If RunAsOutputJob Then
-  Begin
-    ModalResult := mrCancel;
-  End Else Begin
-    Close;
-  End;
-End;
-
-
-
