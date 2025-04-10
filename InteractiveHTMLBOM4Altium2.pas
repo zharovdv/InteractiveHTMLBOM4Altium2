@@ -33,6 +33,39 @@ Var
 
 
 procedure SetupProjectVariant; forward;
+Function GetBoard: IPCB_Board; forward;
+function GenerateNativeConfig: String; forward;
+procedure PopulateChoiceFields; forward;
+procedure PopulateStaticFields; forward;
+procedure PopulateDynamicFields(Board: IPCB_Board); forward;
+Procedure InitializeProject; forward;
+function GetSelectedFields: TStringList; forward;
+function GetSelectedGroupParameters: TStringList; forward;
+
+{.....................................................................................................................}
+{.                                              Global Variable Mapping                                              .}
+{.....................................................................................................................}
+
+
+function GetSeparator: String;
+var
+  Separator: TString;
+begin
+  case FieldSeparatorIndex of
+    0:
+      Separator := ',';
+    1:
+      Separator := ';';
+    2:
+      Separator := ' ';
+    3:
+      Separator := #9;
+    // else
+  end;
+
+  Result := Separator;
+end;
+
 
 {.....................................................................................................................}
 {.                                            Path and Filename Handling                                             .}
@@ -82,6 +115,38 @@ Begin
     ChangeFileExt(TargetFileName, Ext);
   // CurrString := StringReplace( CurrString, '<DATE>',    DateStr,    MkSet( rfReplaceAll, rfIgnoreCase ) );
 End;
+
+function GetWDFileName(FF: String): String;
+var
+  i: Integer;
+  Path: String;
+  CurrentDir: String;
+  Document: IDocument;
+begin
+  Result := FF;
+  if not IsPathRelative(FF) then
+    Exit;
+
+  Result := ExpandFileName(FF);
+
+  for i := 0 to CurrProject.DM_LogicalDocumentCount - 1 do
+  begin
+    Document := CurrProject.DM_LogicalDocuments(i);
+    if Document.DM_FileName <> 'InteractiveHTMLBOM4Altium2.pas' then
+      continue;
+
+    Path := ExtractFilePath(Document.DM_FullPath);
+    if not DirectoryExists(Path) then
+      continue;
+
+    CurrentDir := GetCurrentDir;
+    if not SetCurrentDir(Path) then
+      continue;
+
+    Result := ExpandFileName(FF);
+    SetCurrentDir(CurrentDir);
+  end;
+end;
 
 { ***************************************************************************
   * function FindProjectPcbDocFile()
@@ -166,39 +231,98 @@ begin
 end; { end FindProjectPcbDocFile() }
 
 
-function GetSeparator: String;
-var
-  Separator: TString;
-begin
-  case FieldSeparatorIndex of
-    0:
-      Separator := ',';
-    1:
-      Separator := ';';
-    2:
-      Separator := ' ';
-    3:
-      Separator := #9;
-    // else
-  end;
+{.....................................................................................................................}
+{.                                               Workspace Interaction                                               .}
+{.....................................................................................................................}
 
-  Result := Separator;
-end;
 
-Function LALALALA(Ext: String): String;
+Function GetBoard: IPCB_Board;
+Var
+  Board: IPCB_Board; // document board object
+  Document: IServerDocument;
+  pcbDocPath: TString;
+  flagRequirePcbDocFile: Boolean;
 Begin
-  If TargetFolder = '' Then
-    TargetFolder := CurrProject.DM_GetOutputPath;
-  If TargetFileName = '' Then
-    TargetFileName := CurrProject.DM_ProjectFileName;
-  Result := AddSlash(TargetFolder) + TargetPrefix + 'pcbdata.js';
-  // CurrString := StringReplace( CurrString, '<DATE>',    DateStr,    MkSet( rfReplaceAll, rfIgnoreCase ) );
+  // Make sure the current Workspace opens or else quit this script
+  CurrWorkSpace := GetWorkSpace;
+  If (CurrWorkSpace = Nil) Then
+    Exit;
+
+  // Make sure the currently focussed Project in this Workspace opens or else
+  // quit this script
+  CurrProject := CurrWorkSpace.DM_FocusedProject;
+  If CurrProject = Nil Then
+    Exit;
+
+  flagRequirePcbDocFile := True;
+
+  FindProjectPcbDocFile(CurrProject, flagRequirePcbDocFile, pcbDocPath);
+
+  // TODO: Close
+  Document := Client.OpenDocument('pcb', pcbDocPath);
+  Board := PCBServer.GetPCBBoardByPath(pcbDocPath);
+
+  If Not Assigned(Board) Then // check of active document
+  Begin
+    ShowMessage('The Current Document is not a PCB Document.');
+    Exit;
+  End;
+
+  Result := Board;  
 End;
+
+
+{.....................................................................................................................}
+{.                                              JSON String Conversions                                              .}
+{.....................................................................................................................}
 
 function JSONFloatToStr(v: Single): String;
 begin
   Result := StringReplace(FloatToStr(v), ',', '.',
     MkSet(rfReplaceAll, rfIgnoreCase));
+end;
+
+function JSONBoolToStr(v: Boolean): String;
+begin
+  if v then
+    Result := 'true'
+  else
+    Result := 'false';
+end;
+
+function JSONStrToStr(v: String): String;
+var
+  i: Integer;
+begin
+  Result := '"';
+  for i := 1 to Length(v) do
+  begin
+    case v[i] of
+      '"':
+        Result := Result + '\"';
+      '\':
+        Result := Result + '\\';
+      #$08:
+        Result := Result + '\b';
+      #$09:
+        Result := Result + '\t';
+      #$0a:
+        Result := Result + '\n';
+      #$0b:
+        Result := Result + '\v';
+      #$0c:
+        Result := Result + '\f';
+      #$0d:
+        Result := Result + '\r';
+      #$00 .. #$07, #$0e .. #$1f, #$7e .. #$7f:
+        begin
+          Result := Result + '\u' + IntToHex(Ord(v[i]), 4);
+        end;
+    else
+      Result := Result + '\u' + IntToHex(Ord(v[i]), 4);
+    end;
+  end;
+  Result := Result + '"';
 end;
 
 function GetCompFromComp(pcbc: IPCB_Component): IComponent;
@@ -336,153 +460,6 @@ Begin
   end;
 end;
 
-function JSONBoolToStr(v: Boolean): String;
-begin
-  if v then
-    Result := 'true'
-  else
-    Result := 'false';
-end;
-
-function JSONStrToStr(v: String): String;
-var
-  i: Integer;
-begin
-  Result := '"';
-  for i := 1 to Length(v) do
-  begin
-    case v[i] of
-      '"':
-        Result := Result + '\"';
-      '\':
-        Result := Result + '\\';
-      #$08:
-        Result := Result + '\b';
-      #$09:
-        Result := Result + '\t';
-      #$0a:
-        Result := Result + '\n';
-      #$0b:
-        Result := Result + '\v';
-      #$0c:
-        Result := Result + '\f';
-      #$0d:
-        Result := Result + '\r';
-      #$00 .. #$07, #$0e .. #$1f, #$7e .. #$7f:
-        begin
-          Result := Result + '\u' + IntToHex(Ord(v[i]), 4);
-        end;
-    else
-      Result := Result + '\u' + IntToHex(Ord(v[i]), 4);
-    end;
-  end;
-  Result := Result + '"';
-end;
-
-procedure GetParameters(_pcbBoard: TObject);
-var
-  stringList: TStringList;
-  argIterator: IPCB_BoardIterator;
-  pcbPrimitive: IPCB_Primitive;
-  pcb_primitiveparametersIntf: IPCB_PrimitiveParameters;
-  argIndex: Integer;
-  name: String;
-begin
-  stringList := TStringList.Create;
-  stringList.Sorted := True;
-  stringList.Duplicates := dupIgnore;
-  stringList.Add('[DesignItemID]');
-  stringList.Add('[Description]');
-  stringList.Add('[Comment]');
-  stringList.Add('[Footprint]');
-  argIterator := _pcbBoard.BoardIterator_Create();
-  argIterator.AddFilter_ObjectSet(MkSet(eComponentObject));
-
-  argIterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
-  argIterator.AddFilter_Method(eProcessAll);
-  pcbPrimitive := argIterator.FirstPCBObject();
-  while (pcbPrimitive <> nil) do
-  begin
-    pcb_primitiveparametersIntf := pcbPrimitive;
-    for argIndex := 0 to pcb_primitiveparametersIntf.Count() - 1 do
-    begin
-      name := pcb_primitiveparametersIntf.GetParameterByIndex(argIndex)
-        .GetName();
-
-      begin
-        stringList.Add(name);
-      end;
-    end;
-    pcbPrimitive := argIterator.NextPCBObject();
-  end;
-  _pcbBoard.BoardIterator_Destroy(argIterator);
-
-  ValueParameterCb.Items.AddStrings(stringList);
-  ColumnsParametersClb.Items.AddStrings(stringList);
-  GroupParametersClb.Items.AddStrings(stringList);
-end;
-
-function GetComponentParameters(comp: IPCB_Component): TStringList;
-var
-  stateText: string;
-  str1: string;
-  paramsComponent: TStringList;
-  pcb_primitiveparametersIntf: IPCB_PrimitiveParameters;
-  argIndex: Integer;
-  parameterByIndex: IPCB_Parameter;
-  name, value: String;
-begin
-  stateText := comp.GetState_Name().GetState_Text();
-  str1 := comp.GetState_SourceCompDesignItemID();
-  paramsComponent := TStringList.Create;
-  paramsComponent.Add('[DesignItemID]' + '=' + str1);
-  paramsComponent.Add('[Footprint]' + '=' + comp.GetState_Pattern());
-  paramsComponent.Add('[Comment]' + '=' + comp.GetState_Comment()
-    .GetState_ConvertedString());
-  paramsComponent.Add('[Description]' + '=' +
-    comp.GetState_SourceDescription());
-
-  begin
-    pcb_primitiveparametersIntf := comp;
-    for argIndex := 0 to pcb_primitiveparametersIntf.Count() - 1 do
-    begin
-      parameterByIndex := pcb_primitiveparametersIntf.GetParameterByIndex
-        (argIndex);
-      name := parameterByIndex.GetName();
-      value := parameterByIndex.GetValue();
-      paramsComponent.Add(name + '=' + value);
-    end;
-  end;
-  Result := paramsComponent;
-end;
-
-function getpurpur: TStringList;
-var
-  s: TStringList;
-  i: Integer;
-begin
-  s := TStringList.Create;
-
-  for i := 0 to ColumnsParametersNames.Count - 1 do
-  begin
-    s.Add(ColumnsParametersNames[i]);
-  end;
-  Result := s;
-end;
-
-function getpurpur2: TStringList;
-var
-  s: TStringList;
-  i: Integer;
-begin
-  s := TStringList.Create;
-
-  for i := 0 to GroupParametersNames.Count - 1 do
-  begin
-    s.Add(GroupParametersNames[i]);
-  end;
-  Result := s;
-end;
 
 
 {.....................................................................................................................}
@@ -552,6 +529,40 @@ begin
       end;
     end;
   end;
+end;
+
+function GetComponentParameters(comp: IPCB_Component): TStringList;
+var
+  stateText: string;
+  str1: string;
+  paramsComponent: TStringList;
+  pcb_primitiveparametersIntf: IPCB_PrimitiveParameters;
+  argIndex: Integer;
+  parameterByIndex: IPCB_Parameter;
+  name, value: String;
+begin
+  stateText := comp.GetState_Name().GetState_Text();
+  str1 := comp.GetState_SourceCompDesignItemID();
+  paramsComponent := TStringList.Create;
+  paramsComponent.Add('[DesignItemID]' + '=' + str1);
+  paramsComponent.Add('[Footprint]' + '=' + comp.GetState_Pattern());
+  paramsComponent.Add('[Comment]' + '=' + comp.GetState_Comment()
+    .GetState_ConvertedString());
+  paramsComponent.Add('[Description]' + '=' +
+    comp.GetState_SourceDescription());
+
+  begin
+    pcb_primitiveparametersIntf := comp;
+    for argIndex := 0 to pcb_primitiveparametersIntf.Count() - 1 do
+    begin
+      parameterByIndex := pcb_primitiveparametersIntf.GetParameterByIndex
+        (argIndex);
+      name := parameterByIndex.GetName();
+      value := parameterByIndex.GetValue();
+      paramsComponent.Add(name + '=' + value);
+    end;
+  end;
+  Result := paramsComponent;
 end;
 
 
@@ -1212,7 +1223,7 @@ begin
 end;
 
 function ParseComponent(Board: IPCB_Board; Component: TObject;
-  purpur, purpur2: TStringList; NoBOM: Boolean): String;
+  SelectedFields, SelectedGroupParameters: TStringList; NoBOM: Boolean): String;
 var
   PnPout: TStringList;
   Iterator: IPCB_BoardIterator;
@@ -1276,27 +1287,27 @@ begin
   sl := GetComponentParameters(Component);
 
   PnPout.Add('"PartNumber":' + JSONStrToStr
-    (sl.Values[ValueParameterName]) + ',');
+    (sl.Values[ValueParameterName]) + ','); // TODO: CopyPaste error?
   PnPout.Add('"Value":' + JSONStrToStr(sl.Values[ValueParameterName]) + ',');
 
   PnPout.Add('"Fields":' + '[');
 
-  for hhhhi := 0 to purpur.Count - 1 do
+  for hhhhi := 0 to SelectedFields.Count - 1 do
   begin
     if (hhhhi > 0) then
       PnPout.Add(',');
-    hhhh := purpur[hhhhi];
+    hhhh := SelectedFields[hhhhi];
     PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
   end;
   PnPout.Add('],');
 
   PnPout.Add('"Group":' + '[');
 
-  for hhhhi := 0 to purpur2.Count - 1 do
+  for hhhhi := 0 to SelectedGroupParameters.Count - 1 do
   begin
     if (hhhhi > 0) then
       PnPout.Add(',');
-    hhhh := purpur2[hhhhi];
+    hhhh := SelectedGroupParameters[hhhhi];
     PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
   end;
   PnPout.Add('],');
@@ -1366,8 +1377,8 @@ var
   _Document: IServerDocument;
   // sl: TStringList;
   tmpx, tmpy: String;
-  purpur: TStringList;
-  purpur2: TStringList;
+  SelectedFields: TStringList;
+  SelectedGroupParameters: TStringList;
   hhhhi: Integer;
   hhhh: String;
   StartTime, StopTime: TDateTime;
@@ -1401,10 +1412,8 @@ Begin
 
   StartTime := Now();
 
-  GetParameters(Board);
-
-  purpur := getpurpur();
-  purpur2 := getpurpur2();
+  SelectedFields := GetSelectedFields();
+  SelectedGroupParameters := GetSelectedGroupParameters();
 
   Iterator := Board.BoardIterator_Create;
   Iterator.AddFilter_ObjectSet(MkSet(eComponentObject));
@@ -1446,7 +1455,7 @@ Begin
         If (Count > 1) Then
           PnPout.Add(',');
 
-        PnPout.Add(ParseComponent(Board, Component, purpur, purpur2, NoBOM));
+        PnPout.Add(ParseComponent(Board, Component, SelectedFields, SelectedGroupParameters, NoBOM));
       End;
     Component := Iterator.NextPCBObject;
   End;
@@ -1606,11 +1615,11 @@ Begin
 
   PnPout.Add('"Fields":' + '[');
 
-  for hhhhi := 0 to purpur.Count - 1 do
+  for hhhhi := 0 to SelectedFields.Count - 1 do
   begin
     if (hhhhi > 0) then
       PnPout.Add(',');
-    hhhh := purpur[hhhhi];
+    hhhh := SelectedFields[hhhhi];
     PnPout.Add(JSONStrToStr(hhhh));
   end;
   PnPout.Add(']');
@@ -1765,7 +1774,7 @@ begin
 end;
 
 function ParseComponentGeneric(Board: IPCB_Board; Component: TObject;
-  purpur, purpur2: TStringList; NoBOM: Boolean): String;
+  SelectedFields, SelectedGroupParameters: TStringList; NoBOM: Boolean): String;
 var
   PnPout: TStringList;
   Iterator: IPCB_BoardIterator;
@@ -1840,22 +1849,22 @@ begin
 
     PnPout.Add('"Fields":' + '[');
 
-    for hhhhi := 0 to purpur.Count - 1 do
+    for hhhhi := 0 to SelectedFields.Count - 1 do
     begin
     if (hhhhi > 0) then
     PnPout.Add(',');
-    hhhh := purpur[hhhhi];
+    hhhh := SelectedFields[hhhhi];
     PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
     end;
     PnPout.Add('],');
 
     PnPout.Add('"Group":' + '[');
 
-    for hhhhi := 0 to purpur2.Count - 1 do
+    for hhhhi := 0 to SelectedGroupParameters.Count - 1 do
     begin
     if (hhhhi > 0) then
     PnPout.Add(',');
-    hhhh := purpur2[hhhhi];
+    hhhh := SelectedGroupParameters[hhhhi];
     PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
     end;
     PnPout.Add('],');
@@ -2068,7 +2077,7 @@ begin
 end;
 
 function ParseFootprintGeneric(Board: IPCB_Board; Component: TObject;
-  purpur, purpur2: TStringList; NoBOM: Boolean): String;
+  SelectedFields, SelectedGroupParameters: TStringList; NoBOM: Boolean): String;
 var
   PnPout: TStringList;
   Iterator: IPCB_BoardIterator;
@@ -2385,8 +2394,8 @@ var
   _Document: IServerDocument;
   // sl: TStringList;
   tmpx, tmpy: String;
-  purpur: TStringList;
-  purpur2: TStringList;
+  SelectedFields: TStringList;
+  SelectedGroupParameters: TStringList;
   hhhhi: Integer;
   hhhh: String;
   StartTime, StopTime: TDateTime;
@@ -2430,10 +2439,8 @@ Begin
 
   StartTime := Now();
 
-  GetParameters(Board);
-
-  purpur := getpurpur();
-  purpur2 := getpurpur2();
+  SelectedFields := GetSelectedFields();
+  SelectedGroupParameters := GetSelectedGroupParameters();
 
   Iterator := Board.BoardIterator_Create;
   Iterator.AddFilter_ObjectSet(MkSet(eComponentObject));
@@ -2471,11 +2478,11 @@ Begin
         end;
 
         Components := Components + ParseComponentGeneric(Board, Component,
-          purpur, purpur2, NoBOM);
+          SelectedFields, SelectedGroupParameters, NoBOM);
         Footprints := Footprints + ParseFootprintGeneric(Board, Component,
-          purpur, purpur2, NoBOM);
+          SelectedFields, SelectedGroupParameters, NoBOM);
 
-        // PnPout.Add(ParseComponent(Board, Component, purpur, purpur2, NoBOM));
+        // PnPout.Add(ParseComponent(Board, Component, SelectedFields, SelectedGroupParameters, NoBOM));
       End;
     Component := Iterator.NextPCBObject;
   End;
@@ -2732,11 +2739,11 @@ Begin
 
     PnPout.Add('"Fields":' + '[');
 
-    for hhhhi := 0 to purpur.Count - 1 do
+    for hhhhi := 0 to SelectedFields.Count - 1 do
     begin
     if (hhhhi > 0) then
     PnPout.Add(',');
-    hhhh := purpur[hhhhi];
+    hhhh := SelectedFields[hhhhi];
     PnPout.Add(JSONStrToStr(hhhh));
     end;
     PnPout.Add(']');
@@ -2806,78 +2813,6 @@ End;
 {.                                              Generic JSON Generation                                              .}
 {.....................................................................................................................}
 
-function GenerateConfig: String;
-var
-  PnPout: TStringList;
-  s: TStringList;
-  i: Integer;
-Begin
-  PnPout := TStringList.Create;
-
-  PnPout.Add('var config = {');
-  PnPout.Add('"show_fabrication":' + JSONBoolToStr(FabLayer) + ',');
-  PnPout.Add('"redraw_on_drag":' + JSONBoolToStr(True) + ',');
-  PnPout.Add('"highlight_pin1":' + JSONBoolToStr(Highlighting1Pin) + ',');
-  PnPout.Add('"offset_back_rotation":' + JSONBoolToStr(False) + ',');
-  PnPout.Add('"kicad_text_formatting":' + JSONBoolToStr(True) + ',');
-  PnPout.Add('"dark_mode":' + JSONBoolToStr(DarkMode) + ',');
-  PnPout.Add('"bom_view":' + JSONStrToStr('left-right') + ',');
-  PnPout.Add('"board_rotation":' + JSONStrToStr('0.0') + ',');
-  PnPout.Add('"checkboxes":' + JSONStrToStr('Sourced,Placed') + ',');
-  PnPout.Add('"show_silkscreen":' + JSONBoolToStr(True) + ',');
-  PnPout.Add('"fields":' + '[');
-
-  s := getpurpur();
-  for i := 0 to s.Count - 1 do
-  begin
-    if i > 0 then
-      PnPout.Add(',');
-
-    PnPout.Add(JSONStrToStr(s[i]));
-  end;
-
-  PnPout.Add(']' + ',');
-  PnPout.Add('"show_pads":' + JSONBoolToStr(True) + ',');
-  PnPout.Add('"layer_view":' + JSONStrToStr('FB') + ',');
-  PnPout.Add('};');
-
-  Result := PnPout.Text;
-
-  PnPout.Free;
-end;
-
-function GetWDFileName(FF: String): String;
-var
-  i: Integer;
-  Path: String;
-  CurrentDir: String;
-  Document: IDocument;
-begin
-  Result := FF;
-  if not IsPathRelative(FF) then
-    Exit;
-
-  Result := ExpandFileName(FF);
-
-  for i := 0 to CurrProject.DM_LogicalDocumentCount - 1 do
-  begin
-    Document := CurrProject.DM_LogicalDocuments(i);
-    if Document.DM_FileName <> 'InteractiveHTMLBOM4Altium2.pas' then
-      continue;
-
-    Path := ExtractFilePath(Document.DM_FullPath);
-    if not DirectoryExists(Path) then
-      continue;
-
-    CurrentDir := GetCurrentDir;
-    if not SetCurrentDir(Path) then
-      continue;
-
-    Result := ExpandFileName(FF);
-    SetCurrentDir(CurrentDir);
-  end;
-end;
-
 function StringLoadFromFile(FileName: String): String;
 var
   s: TStringList;
@@ -2918,7 +2853,7 @@ end;
 {.....................................................................................................................}
 
 
-procedure GenerateHTML(pcbdata, config: String);
+procedure GenerateHTML(pcbdata);
 var
   s: TStringList;
   Data: String;
@@ -2937,7 +2872,7 @@ begin
   Data := ReplaceEx(Data, 'LZ-STRING', GetWDFileName('web\lz-string.js'));
   Data := ReplaceEx(Data, 'POINTER_EVENTS_POLYFILL',
     GetWDFileName('web\pep.js'));
-  Data := ReplaceEx2(Data, 'CONFIG', config);
+  Data := ReplaceEx2(Data, 'CONFIG', GenerateNativeConfig());
   Data := ReplaceEx2(Data, 'PCBDATA', pcbdata + #13#10 +
     StringLoadFromFile(GetWDFileName('altium-pcbdata.js')));
   Data := ReplaceEx(Data, 'UTILJS', GetWDFileName('web\util.js'));
@@ -2958,6 +2893,48 @@ begin
   s.SaveToFile(GetOutputFileNameWithExtension('.html'));
   s.Free;
 end;
+
+
+function GenerateNativeConfig: String;
+var
+  PnPout: TStringList;
+  s: TStringList;
+  i: Integer;
+Begin
+  PnPout := TStringList.Create;
+
+  PnPout.Add('var config = {');
+  PnPout.Add('"show_fabrication":' + JSONBoolToStr(FabLayer) + ',');
+  PnPout.Add('"redraw_on_drag":' + JSONBoolToStr(True) + ',');
+  PnPout.Add('"highlight_pin1":' + JSONBoolToStr(Highlighting1Pin) + ',');
+  PnPout.Add('"offset_back_rotation":' + JSONBoolToStr(False) + ',');
+  PnPout.Add('"kicad_text_formatting":' + JSONBoolToStr(True) + ',');
+  PnPout.Add('"dark_mode":' + JSONBoolToStr(DarkMode) + ',');
+  PnPout.Add('"bom_view":' + JSONStrToStr('left-right') + ',');
+  PnPout.Add('"board_rotation":' + JSONStrToStr('0.0') + ',');
+  PnPout.Add('"checkboxes":' + JSONStrToStr('Sourced,Placed') + ',');
+  PnPout.Add('"show_silkscreen":' + JSONBoolToStr(True) + ',');
+  PnPout.Add('"fields":' + '[');
+
+  s := GetSelectedFields();
+  for i := 0 to s.Count - 1 do
+  begin
+    if i > 0 then
+      PnPout.Add(',');
+
+    PnPout.Add(JSONStrToStr(s[i]));
+  end;
+
+  PnPout.Add(']' + ',');
+  PnPout.Add('"show_pads":' + JSONBoolToStr(True) + ',');
+  PnPout.Add('"layer_view":' + JSONStrToStr('FB') + ',');
+  PnPout.Add('};');
+
+  Result := PnPout.Text;
+
+  PnPout.Free;
+end;
+
 
 procedure DumpAsJS(pcbdata);
 var
@@ -2989,9 +2966,6 @@ Procedure Initialize;
 Begin
   // Open Workspace, Project, Get Variants, etc.
   InitializeProject();
-
-  // Add Parameters to Parameters ComboBox
-  LoadParameterNames();
 End;
 
 Procedure InitializeProject;
@@ -3026,6 +3000,30 @@ Begin
     // Choose first variant to start with
     VariantsComboBox.ItemIndex := 0;
     ProjectVariant := CurrProject.DM_ProjectVariants[ 0 ];
+  }
+End;
+
+procedure SetupProjectVariant;
+Var
+  ProjVarIndex: Integer; // Index for iterating through variants
+  TempVariant: IProjectVariant; // A temporary Handle for a ProjectVariant
+Begin
+  ProjectVariant := CurrProject.DM_CurrentProjectVariant;
+  {
+    // Determine how many ProjectVariants are defined within this focussed Project
+    ProjectVariantCount := CurrProject.DM_ProjectVariantCount;
+    ProjectVariant := Nil;
+
+    // Find the Project Variant matching the Variants Combo-Box
+    For ProjVarIndex := 0 To ProjectVariantCount - 1 Do
+    Begin
+    // Fetch the currently indexed project Assembly Variant
+    TempVariant := CurrProject.DM_ProjectVariants[ ProjVarIndex ];
+
+    // See if the Description matches that in the Variants Combo-Box
+    If (VariantName = TempVariant.DM_Description)
+    Then ProjectVariant := CurrProject.DM_ProjectVariants[ ProjVarIndex ];
+    End;
   }
 End;
 
@@ -3233,30 +3231,6 @@ Begin
     GroupParametersNames.DelimitedText;
 End;
 
-procedure SetupProjectVariant;
-Var
-  ProjVarIndex: Integer; // Index for iterating through variants
-  TempVariant: IProjectVariant; // A temporary Handle for a ProjectVariant
-Begin
-  ProjectVariant := CurrProject.DM_CurrentProjectVariant;
-  {
-    // Determine how many ProjectVariants are defined within this focussed Project
-    ProjectVariantCount := CurrProject.DM_ProjectVariantCount;
-    ProjectVariant := Nil;
-
-    // Find the Project Variant matching the Variants Combo-Box
-    For ProjVarIndex := 0 To ProjectVariantCount - 1 Do
-    Begin
-    // Fetch the currently indexed project Assembly Variant
-    TempVariant := CurrProject.DM_ProjectVariants[ ProjVarIndex ];
-
-    // See if the Description matches that in the Variants Combo-Box
-    If (VariantName = TempVariant.DM_Description)
-    Then ProjectVariant := CurrProject.DM_ProjectVariants[ ProjVarIndex ];
-    End;
-  }
-End;
-
 procedure CreateFile(F: string);
 var
   s: TStringList;
@@ -3344,8 +3318,7 @@ Begin
   Begin
     // Generate HTML file
     jsString := PickAndPlaceOutputNative(generateJS);
-    config := GenerateConfig();
-    GenerateHTML(jsString, config);
+    GenerateHTML(jsString);
   End Else If FormatIndex = 1 Then Begin
     // Generate JSON in JavaScript file
     jsString := PickAndPlaceOutputNative(generateJS);
@@ -3382,6 +3355,7 @@ begin
   End Else Begin
     // This is our entry point if the form is opened directly.
     Initialize;
+    PopulateChoiceFields();
     SetState_FromParameters('');
     SetState_Controls;
     OKBtn.Caption := 'Generate';
@@ -3409,7 +3383,68 @@ Begin
   End;
 End;
 
-procedure LoadParameterNames;
+
+{.....................................................................................................................}
+{.                                                  Form Interaction                                                 .}
+{.....................................................................................................................}
+
+
+procedure PopulateChoiceFields;
+Var
+  Board: IPCB_Board; // document board object
+Begin
+  PopulateStaticFields();
+
+  Board := GetBoard();
+  PopulateDynamicFields(Board);
+End;
+
+procedure PopulateDynamicFields(Board: IPCB_Board);
+var
+  stringList: TStringList;
+  argIterator: IPCB_BoardIterator;
+  pcbPrimitive: IPCB_Primitive;
+  pcb_primitiveparametersIntf: IPCB_PrimitiveParameters;
+  argIndex: Integer;
+  name: String;
+begin
+  stringList := TStringList.Create;
+  stringList.Sorted := True;
+  stringList.Duplicates := dupIgnore;
+  stringList.Add('[DesignItemID]');
+  stringList.Add('[Description]');
+  stringList.Add('[Comment]');
+  stringList.Add('[Footprint]');
+  argIterator := Board.BoardIterator_Create();
+  argIterator.AddFilter_ObjectSet(MkSet(eComponentObject));
+
+  argIterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
+  argIterator.AddFilter_Method(eProcessAll);
+  pcbPrimitive := argIterator.FirstPCBObject();
+  while (pcbPrimitive <> nil) do
+  begin
+    pcb_primitiveparametersIntf := pcbPrimitive;
+    for argIndex := 0 to pcb_primitiveparametersIntf.Count() - 1 do
+    begin
+      name := pcb_primitiveparametersIntf.GetParameterByIndex(argIndex)
+        .GetName();
+
+      begin
+        stringList.Add(name);
+      end;
+    end;
+    pcbPrimitive := argIterator.NextPCBObject();
+  end;
+  Board.BoardIterator_Destroy(argIterator);
+
+  ValueParameterCb.Items.AddStrings(stringList);
+  ColumnsParametersClb.Items.AddStrings(stringList);
+  GroupParametersClb.Items.AddStrings(stringList);
+end;
+
+procedure PopulateStaticFields;
+Var
+  Board: IPCB_Board; // document board object
 Begin
   LayerFilterCb.Items.Add('Both');
   LayerFilterCb.Items.Add('Top');
@@ -3419,75 +3454,33 @@ Begin
   FormatCb.Items.Add('JS');
   FormatCb.Items.Add('JSON');
   FormatCb.Items.Add('JSON Generic');
-
-  foobar();
 End;
 
-function foobar: Integer;
+function GetSelectedFields: TStringList;
 var
-  Board: IPCB_Board; // document board object
-  Component: IPCB_Component; // component object
-  Iterator: IPCB_BoardIterator;
-  ComponentIterator: IPCB_GroupIterator;
-  Pad: IPCB_Pad;
-  SMDcomponent: Boolean;
-  BoardUnits: String;
-  // Current unit string mm/mils
-  PnPout: TStringList;
-  Count: Integer;
-  FileName: TString;
-  Document: IServerDocument;
-  x, Y, Rotation, Layer, Net: TString;
-  pcbDocPath: TString;
-  flagRequirePcbDocFile: Boolean;
-  Separator: TString;
-  Iter, Prim: TObject;
-  PadsCount: Integer;
-  PadLayer, PadType: String;
-  PadX, PadY, PadAngle: TString;
-  X1, Y1, X2, Y2, _W, _H: Single;
-  Width, Height: String;
-  PadWidth, PadHeight, PadPin1: String;
-  PadShape, PadDrillShape: String;
-  PadDrillWidth, PadDrillHeight: String;
-  EdgeType: String;
-  EdgeWidth, EdgeHeight, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
-  ccc: IComponent;
-  xxx: String;
-  CurrParm: IParameter;
-  NoBOM: Boolean;
-  k: Integer;
-  CI1, CO1: TObject;
-  contour: IPCB_Contour;
-  kk: Integer;
+  s: TStringList;
+  i: Integer;
+begin
+  s := TStringList.Create;
 
-  _Document: IServerDocument;
-Begin
-  // Make sure the current Workspace opens or else quit this script
-  CurrWorkSpace := GetWorkSpace;
-  If (CurrWorkSpace = Nil) Then
-    Exit;
-
-  // Make sure the currently focussed Project in this Workspace opens or else
-  // quit this script
-  CurrProject := CurrWorkSpace.DM_FocusedProject;
-  If CurrProject = Nil Then
-    Exit;
-
-  flagRequirePcbDocFile := True;
-
-  FindProjectPcbDocFile(CurrProject, flagRequirePcbDocFile,
-    { var } pcbDocPath);
-
-  // TODO: Close
-  _Document := Client.OpenDocument('pcb', pcbDocPath);
-  Board := PCBServer.GetPCBBoardByPath(pcbDocPath);
-
-  If Not Assigned(Board) Then // check of active document
-  Begin
-    ShowMessage('The Current Document is not a PCB Document.');
-    Exit;
-  End;
-
-  GetParameters(Board);
+  for i := 0 to ColumnsParametersNames.Count - 1 do
+  begin
+    s.Add(ColumnsParametersNames[i]);
+  end;
+  Result := s;
 end;
+
+function GetSelectedGroupParameters: TStringList;
+var
+  s: TStringList;
+  i: Integer;
+begin
+  s := TStringList.Create;
+
+  for i := 0 to GroupParametersNames.Count - 1 do
+  begin
+    s.Add(GroupParametersNames[i]);
+  end;
+  Result := s;
+end;
+
