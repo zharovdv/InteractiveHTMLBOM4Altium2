@@ -50,3 +50,8 @@ Set output format for generated file.
 2. JS - js file for my own needs
 3. JSON - json file in custom format for my own needs
 4. JSON Generic - json file complies to the [schema](https://github.com/openscopeproject/InteractiveHtmlBom/tree/master/InteractiveHtmlBom/ecad/schema), that is needed to generate the [InteractiveHtmlBom](https://github.com/openscopeproject/InteractiveHtmlBom). See project wiki for [installation](https://github.com/openscopeproject/InteractiveHtmlBom/wiki/Installation) and [usage](https://github.com/openscopeproject/InteractiveHtmlBom/wiki/Usage) instructions.
+
+
+## License and credits
+
+Plugin code is licensed under MIT license, see `LICENSE` for more info.
