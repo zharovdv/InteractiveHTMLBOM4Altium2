@@ -29,25 +29,24 @@ Var
   ValueParameterName: String;
   ColumnsParametersNames: TStringList;
   GroupParametersNames: TStringList;
+  Nets: TStringList;
   RunAsOutputJob: Boolean;
 
-
-procedure SetupProjectVariant; forward;
-Function GetBoard: IPCB_Board; forward;
-function GenerateNativeConfig: String; forward;
-procedure PopulateChoiceFields; forward;
-procedure PopulateStaticFields; forward;
+procedure SetupProjectVariant(Dummy: Integer); forward;
+function GetBoard(Dummy: Integer): IPCB_Board; forward;
+function GenerateNativeConfig(Dummy: Integer): String; forward;
+procedure PopulateChoiceFields(Dummy: Integer); forward;
+procedure PopulateStaticFields(Dummy: Integer); forward;
 procedure PopulateDynamicFields(Board: IPCB_Board); forward;
-Procedure InitializeProject; forward;
-function GetSelectedFields: TStringList; forward;
-function GetSelectedGroupParameters: TStringList; forward;
+procedure InitializeProject(Dummy: Integer); forward;
+function GetSelectedFields(Dummy: Integer): TStringList; forward;
+function GetSelectedGroupParameters(Dummy: Integer): TStringList; forward;
 
-{.....................................................................................................................}
-{.                                              Global Variable Mapping                                              .}
-{.....................................................................................................................}
+{ ..................................................................................................................... }
+{ .                                              Global Variable Mapping                                              . }
+{ ..................................................................................................................... }
 
-
-function GetSeparator: String;
+function GetSeparator(Dummy: Integer): String;
 var
   Separator: TString;
 begin
@@ -66,13 +65,11 @@ begin
   Result := Separator;
 end;
 
+{ ..................................................................................................................... }
+{ .                                            Path and Filename Handling                                             . }
+{ ..................................................................................................................... }
 
-{.....................................................................................................................}
-{.                                            Path and Filename Handling                                             .}
-{.....................................................................................................................}
-
-
-function GetPluginExecutableFileName: String;
+function GetPluginExecutableFileName(Dummy: Integer): String;
 var
   i: Integer;
   Path: String;
@@ -103,7 +100,6 @@ begin
     SetCurrentDir(CurrentDir);
   end;
 end;
-
 
 Function GetOutputFileNameWithExtension(Ext: String): String;
 Begin
@@ -230,13 +226,11 @@ begin
 
 end; { end FindProjectPcbDocFile() }
 
+{ ..................................................................................................................... }
+{ .                                               Workspace Interaction                                               . }
+{ ..................................................................................................................... }
 
-{.....................................................................................................................}
-{.                                               Workspace Interaction                                               .}
-{.....................................................................................................................}
-
-
-Function GetBoard: IPCB_Board;
+Function GetBoard(Dummy: Integer): IPCB_Board;
 Var
   Board: IPCB_Board; // document board object
   Document: IServerDocument;
@@ -268,13 +262,12 @@ Begin
     Exit;
   End;
 
-  Result := Board;  
+  Result := Board;
 End;
 
-
-{.....................................................................................................................}
-{.                                              JSON String Conversions                                              .}
-{.....................................................................................................................}
+{ ..................................................................................................................... }
+{ .                                              JSON String Conversions                                              . }
+{ ..................................................................................................................... }
 
 function JSONFloatToStr(v: Single): String;
 begin
@@ -325,6 +318,26 @@ begin
   Result := Result + '"';
 end;
 
+function _String_(v: String): String;
+var
+  i: Integer;
+begin
+  Result := '';
+  for i := 1 to Length(v) do
+  begin
+    case v[i] of
+      '.', '-', '_':
+        Result := Result + v[i];
+      '0' .. '9':
+        Result := Result + v[i];
+      'A' .. 'W':
+        Result := Result + v[i];
+    else
+      Result := Result + '';
+    end;
+  end;
+end;
+
 function GetCompFromComp(pcbc: IPCB_Component): IComponent;
 begin
   // Make sure the current Workspace opens or else quit this script
@@ -341,7 +354,7 @@ begin
   Result := nil;
 end;
 
-function GetFlatDoc: IDocument;
+function GetFlatDoc(Dummy: Integer): IDocument;
 Begin
   FlattenedDoc := CurrProject.DM_DocumentFlattened;
 
@@ -359,7 +372,7 @@ Begin
   Result := FlattenedDoc;
 end;
 
-procedure ListAllFields;
+procedure ListAllFields(Dummy: Integer);
 Var
   CompIndex: Integer; // An Index for pullin out components
   PhysCompCount: Integer; // A count of the number of components in document
@@ -391,7 +404,7 @@ Var
   ComponentVariation: IComponentVariation;
 
 Begin
-  FlattenedDoc := GetFlatDoc();
+  FlattenedDoc := GetFlatDoc(0);
 
   CompCount := FlattenedDoc.DM_ComponentCount;
 
@@ -443,7 +456,7 @@ Var
   ComponentVariation: IComponentVariation;
 
 Begin
-  FlattenedDoc := GetFlatDoc();
+  FlattenedDoc := GetFlatDoc(0);
 
   CompCount := FlattenedDoc.DM_ComponentCount;
 
@@ -460,12 +473,9 @@ Begin
   end;
 end;
 
-
-
-{.....................................................................................................................}
-{.                                            Generation Helper Functions                                            .}
-{.....................................................................................................................}
-
+{ ..................................................................................................................... }
+{ .                                            Generation Helper Functions                                            . }
+{ ..................................................................................................................... }
 
 {
   ComponentIsFittedInCurrentVariant cross-checks the ComponentId and Designator
@@ -488,7 +498,9 @@ begin
     begin
       // Exclude components that are part of a variant but we're not inside a variant
       Result := False;
-    end else begin
+    end
+    else
+    begin
       // Component is not part of a variant, and we're not inside a variant
       Result := True;
     end;
@@ -500,12 +512,14 @@ begin
       (Designator);
     if ComponentVariation <> nil then
     begin
-      if ComponentId <> ComponentVariation.DM_UniqueId + '@' +
-        _ProjectVariant.DM_Description then
+      if ComponentId <> ComponentVariation.DM_UniqueId + '@' + _ProjectVariant.DM_Description
+      then
       begin
         // Exclude component that is part of another variant
         Result := False;
-      end else begin
+      end
+      else
+      begin
         // Include component that is part of the current variant
         Result := True;
       end;
@@ -523,7 +537,9 @@ begin
         // Component has a variant-specific ID, but there is no variation defined for it.
         // Possibly belongs to a different variant --> exclude it.
         Result := False;
-      end else begin
+      end
+      else
+      begin
         // Component has no variant-specific ID, and no variation is defined --> include it.
         Result := True;
       end;
@@ -565,1094 +581,9 @@ begin
   Result := paramsComponent;
 end;
 
-
-{.....................................................................................................................}
-{.                                               Native JSON Generation                                              .}
-{.....................................................................................................................}
-
-
-function ParseArc(Board: IPCB_Board; Prim: TObject): String;
-var
-  PnPout: TStringList;
-  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
-  EdgeType: String;
-begin
-  PnPout := TStringList.Create;
-  // ;{edges.push(parseArc(Prim));}
-  EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.LineWidth));
-  EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.XCenter - Board.XOrigin));
-  EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.YCenter - Board.YOrigin));
-  EdgeX2 := JSONFloatToStr(-Prim.EndAngle);
-  EdgeY2 := JSONFloatToStr(-Prim.StartAngle);
-  EdgeRadius := JSONFloatToStr(CoordToMMs(Prim.Radius));
-
-  EdgeType := 'arc';
-  PnPout.Add('{');
-  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-  PnPout.Add('"Width":' + (EdgeWidth) + ',');
-  PnPout.Add('"X":' + (EdgeX1) + ',');
-  PnPout.Add('"Y":' + (EdgeY1) + ',');
-  PnPout.Add('"Angle1":' + (EdgeX2) + ',');
-  PnPout.Add('"Angle2":' + (EdgeY2) + ',');
-  PnPout.Add('"Radius":' + (EdgeRadius));
-  PnPout.Add('}');
-  Result := PnPout.Text;
-  PnPout.Free;
-end;
-
-function ParseTrack(Board: IPCB_Board; Prim: TObject): String;
-var
-  PnPout: TStringList;
-  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
-  EdgeType: String;
-begin
-  PnPout := TStringList.Create;
-  // JSONPush(edges,parseTrack(Prim));
-  {
-    var start = [CoordToMMs(Prim.x1).round(), -CoordToMMs(Prim.y1).round()];
-    var end = [CoordToMMs(Prim.x2).round(), -CoordToMMs(Prim.y2).round()];
-    res["layer"] = Prim.Layer;
-    if (Prim.InPolygon)
-    res["type"] = "polygon";
-    res["svgpath"] = ["M", start, "L", end].join(" ");
-    else             res["type"] = "segment";
-    res["start"] = start;
-    res["end"] = end;
-    res["width"] = CoordToMMs(Prim.Width).round();
-  }
-
-  EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.Width));
-  EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.X1 - Board.XOrigin));
-  EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.Y1 - Board.YOrigin));
-  EdgeX2 := JSONFloatToStr(CoordToMMs(Prim.X2 - Board.XOrigin));
-  EdgeY2 := JSONFloatToStr(-CoordToMMs(Prim.Y2 - Board.YOrigin));
-
-  EdgeType := 'segment';
-  PnPout.Add('{');
-  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-  PnPout.Add('"Width":' + (EdgeWidth) + ',');
-  PnPout.Add('"X1":' + (EdgeX1) + ',');
-  PnPout.Add('"Y1":' + (EdgeY1) + ',');
-  PnPout.Add('"X2":' + (EdgeX2) + ',');
-  PnPout.Add('"Y2":' + (EdgeY2));
-
-  PnPout.Add('}');
-  Result := PnPout.Text;
-  PnPout.Free;
-end;
-
-function ParseText(Board: IPCB_Board; Prim: TObject): String;
-var
-  PnPout: TStringList;
-  Layer: String;
-  X1, Y1, X2, Y2, _W, _H: Single;
-  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeHeight: String;
-  EdgeType: String;
-begin
-  PnPout := TStringList.Create;
-
-  If (Prim.Layer = eTopOverlay) Then
-    Layer := 'TopOverlay'
-  Else If (Prim.Layer = eBottomOverlay) Then
-    Layer := 'BottomOverlay'
-  Else If (Prim.Layer = eTopLayer) Then
-    Layer := 'TopLayer'
-  Else If (Prim.Layer = eBottomLayer) Then
-    Layer := 'BottomLayer';
-
-  // X1 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Left- Board.XOrigin);
-  // Y1 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Bottom- Board.YOrigin);
-  // X2 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Right- Board.XOrigin);
-  // Y2 :=CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Top- Board.YOrigin);
-
-  // var x0, y0, x1, y1;
-  X1 := CoordToMMs(Prim.BoundingRectangleForSelection.Left - Board.XOrigin);
-  Y1 := CoordToMMs(Prim.BoundingRectangleForSelection.Bottom - Board.YOrigin);
-  X2 := CoordToMMs(Prim.BoundingRectangleForSelection.Right - Board.XOrigin);
-  Y2 := CoordToMMs(Prim.BoundingRectangleForSelection.Top - Board.YOrigin);
-
-  _W := X2 - X1;
-  _H := Y2 - Y1;
-
-  EdgeX1 := JSONFloatToStr(X1 + _W / 2);
-  EdgeY1 := JSONFloatToStr(-(Y1 + _H / 2));
-
-  // bbox["size"] = [(x1 - x0).round(), (y1 - y0).round()];
-
-  // bbox["center"] = [(x0 + bbox.size[0] / 2).round(), -(y0 + bbox.size[1] / 2).round()];
-
-  EdgeX2 := JSONFloatToStr(Prim.Rotation);
-
-  if (Prim.TextKind = 0) then
-  begin
-    // res["thickness"] = CoordToMMs(Prim.Width).round();
-    EdgeHeight := JSONFloatToStr(CoordToMMs(Prim.Size));
-    EdgeWidth := EdgeHeight; // single char's width in kicad
-  end
-  else if (Prim.TextKind = 1) then
-  begin
-    EdgeHeight := JSONFloatToStr(CoordToMMs(Prim.TTFTextHeight * 0.6));
-    EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.TTFTextWidth * 0.9 /
-      Length(Prim.Text)));
-    // res["thickness"] = CoordToMMs(res["height"] * 0.1);
-  end;
-
-  EdgeType := 'text';
-  PnPout.Add('{');
-  PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
-  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-  // PnPout.Add('"Width":'+'"'+Preprocess(EdgeWidth)+'"'+',');
-  PnPout.Add('"X":' + (EdgeX1) + ',');
-  PnPout.Add('"Y":' + (EdgeY1) + ',');
-  PnPout.Add('"Width":' + (EdgeWidth) + ',');
-  PnPout.Add('"Height":' + (EdgeHeight) + ',');
-  PnPout.Add('"Angle":' + (EdgeX2) + ',');
-  // PnPout.Add('"Angle2":'+'"'+Preprocess(EdgeY2)+'"'+',');
-  PnPout.Add('"Mirrored":' + JSONBoolToStr(Prim.MirrorFlag) + ',');
-  PnPout.Add('"Designator":' + JSONBoolToStr(Prim.IsDesignator) + ',');
-  PnPout.Add('"Value":' + JSONBoolToStr(Prim.IsComment) + ',');
-  PnPout.Add('"Text":' + JSONStrToStr(Prim.Text));
-  PnPout.Add('}');
-  Result := PnPout.Text;
-  PnPout.Free;
-end;
-
-function ParseArc2(Board: IPCB_Board; Prim: TObject): String;
-var
-  PnPout: TStringList;
-  Layer: String;
-  // X1, Y1, X2, Y2, _W, _H: Single;
-  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
-  EdgeType: String;
-begin
-  PnPout := TStringList.Create;
-  // ;{edges.push(parseArc(Prim));}
-
-  // res["type"] = "arc";
-  // res["width"] = width;
-  // res["startangle"] = -Prim.EndAngle.round();
-  // res["endangle"] = -Prim.StartAngle.round();
-  // res["start"] = [CoordToMMs(Prim.XCenter).round(), -CoordToMMs(Prim.YCenter).round()];
-
-  EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.LineWidth));
-  EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.XCenter - Board.XOrigin));
-  EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.YCenter - Board.YOrigin));
-  EdgeX2 := JSONFloatToStr(-Prim.EndAngle);
-  EdgeY2 := JSONFloatToStr(-Prim.StartAngle);
-  EdgeRadius := JSONFloatToStr(CoordToMMs(Prim.Radius));
-
-  If (Prim.Layer = eTopOverlay) Then
-    Layer := 'TopOverlay'
-  Else If (Prim.Layer = eBottomOverlay) Then
-    Layer := 'BottomOverlay'
-  Else If (Prim.Layer = eTopLayer) Then
-    Layer := 'TopLayer'
-  Else If (Prim.Layer = eBottomLayer) Then
-    Layer := 'BottomLayer';
-
-  EdgeType := 'arc';
-  PnPout.Add('{');
-  PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
-  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-  PnPout.Add('"Width":' + (EdgeWidth) + ',');
-  PnPout.Add('"X":' + (EdgeX1) + ',');
-  PnPout.Add('"Y":' + (EdgeY1) + ',');
-  PnPout.Add('"Angle1":' + (EdgeX2) + ',');
-  PnPout.Add('"Angle2":' + (EdgeY2) + ',');
-  PnPout.Add('"Radius":' + (EdgeRadius));
-  PnPout.Add('}');
-
-  Result := PnPout.Text;
-  PnPout.Free;
-end;
-
-function ParseTrack2(Board: IPCB_Board; Prim: TObject): String;
-var
-  PnPout: TStringList;
-  Layer: String;
-  // X1, Y1, X2, Y2, _W, _H: Single;
-  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeHeight: String;
-  EdgeType: String;
-  Net: String;
-begin
-  PnPout := TStringList.Create;
-
-  // JSONPush(edges,parseTrack(Prim));
-  {
-    var start = [CoordToMMs(Prim.x1).round(), -CoordToMMs(Prim.y1).round()];
-    var end = [CoordToMMs(Prim.x2).round(), -CoordToMMs(Prim.y2).round()];
-    res["layer"] = Prim.Layer;
-    if (Prim.InPolygon)
-    res["type"] = "polygon";
-    res["svgpath"] = ["M", start, "L", end].join(" ");
-    else             res["type"] = "segment";
-    res["start"] = start;
-    res["end"] = end;
-    res["width"] = CoordToMMs(Prim.Width).round();
-  }
-
-  EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.Width));
-  EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.X1 - Board.XOrigin));
-  EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.Y1 - Board.YOrigin));
-  EdgeX2 := JSONFloatToStr(CoordToMMs(Prim.X2 - Board.XOrigin));
-  EdgeY2 := JSONFloatToStr(-CoordToMMs(Prim.Y2 - Board.YOrigin));
-
-  If (Prim.Layer = eTopOverlay) Then
-    Layer := 'TopOverlay'
-  Else If (Prim.Layer = eBottomOverlay) Then
-    Layer := 'BottomOverlay'
-  Else If (Prim.Layer = eTopLayer) Then
-    Layer := 'TopLayer'
-  Else If (Prim.Layer = eBottomLayer) Then
-    Layer := 'BottomLayer';
-  Net := 'No Net';
-  if Prim.Net <> nil then
-    Net := Prim.Net.name;
-
-  EdgeType := 'segment';
-  PnPout.Add('{');
-  PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
-  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-  PnPout.Add('"Width":' + (EdgeWidth) + ',');
-  PnPout.Add('"X1":' + (EdgeX1) + ',');
-  PnPout.Add('"Y1":' + (EdgeY1) + ',');
-  PnPout.Add('"X2":' + (EdgeX2) + ',');
-  PnPout.Add('"Y2":' + (EdgeY2) + ',');
-  PnPout.Add('"Net":' + JSONStrToStr(Net));
-  PnPout.Add('}');
-
-  Result := PnPout.Text;
-  PnPout.Free;
-end;
-
-function ParseVIA(Board: IPCB_Board; Prim: TObject): String;
-var
-  PnPout: TStringList;
-  Layer, Net: String;
-  // X1, Y1, X2, Y2, _W, _H: Single;
-  EdgeWidth, EdgeX1, EdgeY1, PadDrillWidth: String;
-  EdgeType: String;
-begin
-  PnPout := TStringList.Create;
-
-  // TODO: Layers
-  EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.Size));
-  EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.x - Board.XOrigin));
-  EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.Y - Board.YOrigin));
-  PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
-
-  If (Prim.Layer = eTopOverlay) Then
-    Layer := 'TopOverlay'
-  Else If (Prim.Layer = eBottomOverlay) Then
-    Layer := 'BottomOverlay'
-  Else If (Prim.Layer = eTopLayer) Then
-    Layer := 'TopLayer'
-  Else If (Prim.Layer = eBottomLayer) Then
-    Layer := 'BottomLayer'
-  Else If (Prim.Layer = eMultiLayer) Then
-    Layer := 'MultiLayer';
-  Net := 'No Net';
-  if Prim.Net <> nil then
-    Net := Prim.Net.name;
-
-  EdgeType := 'via';
-  PnPout.Add('{');
-  PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
-  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-  PnPout.Add('"Width":' + JSONStrToStr(EdgeWidth) + ',');
-  PnPout.Add('"X":' + (EdgeX1) + ',');
-  PnPout.Add('"Y":' + (EdgeY1) + ',');
-  PnPout.Add('"DrillWidth":' + (PadDrillWidth) + ',');
-  PnPout.Add('"Net":' + JSONStrToStr(Net));
-  PnPout.Add('}');
-
-  Result := PnPout.Text;
-  PnPout.Free;
-end;
-
-function ParseRegion(Board: IPCB_Board; Prim: TObject): String;
-var
-  PnPout: TStringList;
-  Layer, Net: String;
-  // X1, Y1, X2, Y2, _W, _H: Single;
-  // EdgeWidth, EdgeX1, EdgeY1, PadDrillWidth: String;
-  EdgeX1, EdgeY1: String;
-  EdgeType: String;
-  k: Integer;
-  CI1, CO1: TObject;
-  contour: IPCB_Contour;
-  kk: Integer;
-begin
-  PnPout := TStringList.Create;
-
-  If (Prim.Layer = eTopOverlay) Then
-    Layer := 'TopOverlay'
-  Else If (Prim.Layer = eBottomOverlay) Then
-    Layer := 'BottomOverlay'
-  Else If (Prim.Layer = eTopLayer) Then
-    Layer := 'TopLayer'
-  Else If (Prim.Layer = eBottomLayer) Then
-    Layer := 'BottomLayer';
-  Net := 'No Net';
-  if Prim.Net <> nil then
-    Net := Prim.Net.name;
-
-  EdgeType := 'polygon';
-  PnPout.Add('{');
-  PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
-  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-  PnPout.Add('"Net":' + JSONStrToStr(Net) + ',');
-  PnPout.Add('"Points": [');
-  PnPout.Add('],');
-  // PnPout.Add('}');
-
-  k := 0;
-
-  PnPout.Add('"EX": [');
-
-  // CI1 := Prim.GroupIterator_Create;
-  // CI1.AddFilter_ObjectSet(MkSet(ePadObject));
-  // CO1 := CI1.FirstPCBObject;
-  // While (CO1 <> Nil) Do
-  CO1 := Prim;
-
-  // if (CO1<>nil) then
-  begin
-    if CO1.ObjectId = eRegionObject then
-    begin
-      Inc(k);
-      If (k > 1) Then
-        PnPout.Add(',');
-      PnPout.Add('[');
-      contour := CO1.GetMainContour();
-      for kk := 0 to contour.Count do
-      begin
-        If (kk > 0) Then
-          PnPout.Add(',');
-        EdgeX1 := JSONFloatToStr
-          (CoordToMMs(contour.GetState_PointX(kk mod contour.Count) -
-          Board.XOrigin));
-        EdgeY1 := JSONFloatToStr
-          (-CoordToMMs(contour.GetState_PointY(kk mod contour.Count) -
-          Board.YOrigin));
-        PnPout.Add('[');
-        PnPout.Add(EdgeX1 + ',');
-        PnPout.Add(EdgeY1);
-        PnPout.Add(']');
-      end;
-      PnPout.Add(']');
-    end;
-    // CO1 := CI1.NextPCBObject;
-  end;
-  // Prim.GroupIterator_Destroy(CI1);
-
-  PnPout.Add(']');
-
-  PnPout.Add('}');
-
-  Result := PnPout.Text;
-  PnPout.Free;
-end;
-
-function ParsePoly(Board: IPCB_Board; Prim: TObject): String;
-var
-  PnPout: TStringList;
-  Layer, Net: String;
-  // X1, Y1, X2, Y2, _W, _H: Single;
-  // EdgeWidth, EdgeX1, EdgeY1, PadDrillWidth: String;
-  EdgeX1, EdgeY1: String;
-  EdgeType: String;
-  k: Integer;
-  CI1, CO1: TObject;
-  contour: IPCB_Contour;
-  kk: Integer;
-begin
-  PnPout := TStringList.Create;
-
-  If (Prim.Layer = eTopOverlay) Then
-    Layer := 'TopOverlay'
-  Else If (Prim.Layer = eBottomOverlay) Then
-    Layer := 'BottomOverlay'
-  Else If (Prim.Layer = eTopLayer) Then
-    Layer := 'TopLayer'
-  Else If (Prim.Layer = eBottomLayer) Then
-    Layer := 'BottomLayer';
-  Net := 'No Net';
-  if Prim.Net <> nil then
-    Net := Prim.Net.name;
-
-  EdgeType := 'polygon';
-  PnPout.Add('{');
-  PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
-  PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
-  PnPout.Add('"Net":' + JSONStrToStr(Net) + ',');
-  PnPout.Add('"Points": [');
-  PnPout.Add('],');
-  // PnPout.Add('}');
-
-  k := 0;
-
-  PnPout.Add('"EX": [');
-
-  CI1 := Prim.GroupIterator_Create;
-  // CI1.AddFilter_ObjectSet(MkSet(ePadObject));
-  CO1 := CI1.FirstPCBObject;
-  While (CO1 <> Nil) Do
-  begin
-    if CO1.ObjectId = eRegionObject then
-    begin
-      Inc(k);
-      If (k > 1) Then
-        PnPout.Add(',');
-      PnPout.Add('[');
-      contour := CO1.GetMainContour();
-      for kk := 0 to contour.Count do
-      begin
-        If (kk > 0) Then
-          PnPout.Add(',');
-        EdgeX1 := JSONFloatToStr
-          (CoordToMMs(contour.GetState_PointX(kk mod contour.Count) -
-          Board.XOrigin));
-        EdgeY1 := JSONFloatToStr
-          (-CoordToMMs(contour.GetState_PointY(kk mod contour.Count) -
-          Board.YOrigin));
-        PnPout.Add('[');
-        PnPout.Add(EdgeX1 + ',');
-        PnPout.Add(EdgeY1);
-        PnPout.Add(']');
-      end;
-      PnPout.Add(']');
-    end;
-    CO1 := CI1.NextPCBObject;
-  end;
-  Prim.GroupIterator_Destroy(CI1);
-
-  PnPout.Add(']');
-
-  PnPout.Add('}');
-
-  Result := PnPout.Text;
-  PnPout.Free;
-end;
-
-function ParsePad(Board: IPCB_Board; Prim, Pad: TObject): String;
-var
-  PnPout: TStringList;
-  // Layer, Net: String;
-  // X1, Y1, X2, Y2, _W, _H: Single;
-  // EdgeWidth, EdgeX1, EdgeY1, PadDrillWidth: String;
-  // EdgeType: String;
-  PadsCount: Integer;
-  PadLayer, PadType: String;
-  PadX, PadY, PadAngle: TString;
-  X1, Y1, X2, Y2, _W, _H: Single;
-  Width, Height: String;
-  PadWidth, PadHeight: String;
-  PadPin1: Boolean;
-  PadShape, PadDrillShape: String;
-  PadDrillWidth, PadDrillHeight: String;
-  Net: String;
-begin
-  PnPout := TStringList.Create;
-
-  PnPout.Add('{');
-
-  // TODO: Not sure
-  PadType := Pad.Layer;
-  if (Pad.Layer = eTopLayer) then
-  begin
-    PadLayer := 'TopLayer';
-    PadType := 'smd';
-    PadWidth := FloatToStr(CoordToMMs(Pad.TopXSize));
-    PadHeight := FloatToStr(CoordToMMs(Pad.TopYSize));
-
-    PadShape := 'circle';
-    case (Pad.TopShape) of
-      1:
-        begin
-          if PadWidth = PadHeight then
-            PadShape := 'circle'
-          else
-            PadShape := 'oval';
-          // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
-        end;
-      2:
-        PadShape := 'rect';
-      // 3:PadShape :='chamfrect';
-      9:
-        PadShape := 'roundrect';
-      // default:
-      // res['shape'] :='custom';
-    end;
-  end
-  else if (Pad.Layer = eBottomLayer) then
-  begin
-    PadLayer := 'BottomLayer';
-    PadType := 'smd';
-    PadWidth := FloatToStr(CoordToMMs(Prim.BotXSize));
-    PadHeight := FloatToStr(CoordToMMs(Prim.BotYSize));
-    PadShape := 'circle';
-    case (Pad.BotShape) of
-      1:
-        begin
-          if PadWidth = PadHeight then
-            PadShape := 'circle'
-          else
-            PadShape := 'oval';
-          // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
-        end;
-      2:
-        PadShape := 'rect';
-      // 3:PadShape :='chamfrect';
-      9:
-        PadShape := 'roundrect';
-      // default:
-      // res['shape'] :='custom';
-    end;
-  end
-  else
-  begin
-    PadLayer := 'MultiLayer';
-    PadType := 'th';
-    PadWidth := FloatToStr(CoordToMMs(Prim.TopXSize));
-    PadHeight := FloatToStr(CoordToMMs(Prim.TopYSize));
-    // TODO: Is it norm?
-    PadShape := 'circle';
-    case (Pad.TopShape) of
-      1:
-        begin
-          if PadWidth = PadHeight then
-            PadShape := 'circle'
-          else
-            PadShape := 'oval';
-          // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
-        end;
-      // 3:PadShape :='chamfrect';
-      9:
-        PadShape := 'roundrect';
-      // default:
-      // res['shape'] :='custom';
-    end;
-    case (Pad.BotShape) of
-      1:
-        begin
-          if PadWidth = PadHeight then
-            PadShape := 'circle'
-          else
-            PadShape := 'oval';
-          // (res['size'][0] == res['size'][1]) ? 'circle' : 'oval';
-        end;
-      2:
-        PadShape := 'rect';
-      // 3:PadShape :='chamfrect';
-      9:
-        PadShape := 'roundrect';
-      // default:
-      // res['shape'] :='custom';
-    end;
-
-    case (Pad.HoleType) of
-      0: // circle
-        begin
-          // res["drillsize"] = [CoordToMMs(Prim.HoleSize).round(), CoordToMMs(Prim.HoleSize).round()];
-          PadDrillShape := 'circle';
-          PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
-          PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
-        end;
-      1: // square, but not supported in kicad, so do as circle
-        begin
-          // res["drillsize"] = [CoordToMMs(Prim.HoleSize).round(), CoordToMMs(Prim.HoleSize).round()];
-          PadDrillShape := 'rect';
-          PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleWidth));
-          PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
-        end;
-      2: // slot
-        begin
-          // res["drillsize"] = [CoordToMMs(Prim.HoleWidth).round(), CoordToMMs(Prim.HoleSize).round()];
-          PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleWidth));
-          PadDrillHeight := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
-          PadDrillShape := 'oblong';
-        end;
-      // default:  //
-    end;
-
-  end;
-
-  PadPin1 := False;
-  if (Pad.name = '1') then
-  // if ("A1".indexOf(Pad.Name) != -1) then
-  begin
-    PadPin1 := True;
-  end;
-
-  PadWidth := StringReplace(PadWidth, ',', '.',
-    MkSet(rfReplaceAll, rfIgnoreCase));
-  PadHeight := StringReplace(PadHeight, ',', '.',
-    MkSet(rfReplaceAll, rfIgnoreCase));
-
-  PadX := JSONFloatToStr(CoordToMMs(Pad.x - Board.XOrigin));
-  PadY := JSONFloatToStr(-CoordToMMs(Pad.Y - Board.YOrigin));
-
-  PadAngle := JSONFloatToStr(Pad.Rotation);
-
-  Net := 'No Net';
-  if Prim.Net <> nil then
-    Net := Prim.Net.name;
-
-  PnPout.Add('"Layer":' + JSONStrToStr(PadLayer) + ',');
-  PnPout.Add('"Type":' + JSONStrToStr(PadType) + ',');
-  PnPout.Add('"Shape":' + JSONStrToStr(PadShape) + ',');
-  if PadType = 'th' then
-  begin
-    PnPout.Add('"DrillShape":' + JSONStrToStr(PadDrillShape) + ',');
-    PnPout.Add('"DrillWidth":' + (PadDrillWidth) + ',');
-    PnPout.Add('"DrillHeight":' + (PadDrillHeight) + ',');
-  end;
-  // PnPout.Add('"Debug":'+'"'+Preprocess(Prim.Layer)+'"'+',');
-  PnPout.Add('"X":' + (PadX) + ',');
-  PnPout.Add('"Y":' + (PadY) + ',');
-  PnPout.Add('"Width":' + (PadWidth) + ',');
-  PnPout.Add('"Height":' + (PadHeight) + ',');
-  PnPout.Add('"Angle":' + (PadAngle) + ',');
-  PnPout.Add('"Pin1":' + JSONBoolToStr(PadPin1) + ',');
-  PnPout.Add('"Net":' + JSONStrToStr(Net));
-
-  PnPout.Add('}');
-  Result := PnPout.Text;
-  PnPout.Free;
-end;
-
-function ParseComponent(Board: IPCB_Board; Component: TObject;
-  SelectedFields, SelectedGroupParameters: TStringList; NoBOM: Boolean): String;
-var
-  PnPout: TStringList;
-  Iterator: IPCB_BoardIterator;
-  ComponentIterator: IPCB_GroupIterator;
-
-  Pad: IPCB_Pad;
-
-  x, Y, Rotation, Layer, Net: TString;
-
-  Iter, Prim: TObject;
-  PadsCount: Integer;
-  X1, Y1, X2, Y2, _W, _H: Single;
-  Width, Height: String;
-
-  sl: TStringList;
-  hhhhi: Integer;
-  hhhh: String;
-begin
-  PnPout := TStringList.Create;
-
-  If (Component.Layer = eTopLayer) Then
-    Layer := 'TopLayer'
-  Else
-    Layer := 'BottomLayer';
-  x := JSONFloatToStr(CoordToMMs(Component.x - Board.XOrigin));
-  Y := JSONFloatToStr(-CoordToMMs(Component.Y - Board.YOrigin));
-  Rotation := IntToStr(Component.Rotation);
-
-  // TODO: Is it correct? X1,Y1 vs X,Y
-  X1 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Left -
-    Board.XOrigin);
-  Y1 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Bottom -
-    Board.YOrigin);
-  X2 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Right -
-    Board.XOrigin);
-  Y2 := CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Top -
-    Board.YOrigin);
-
-  Width := JSONFloatToStr(X2 - X1);
-  Height := JSONFloatToStr(Y2 - Y1);
-
-  x := StringReplace(FloatToStr(X1), ',', '.',
-    MkSet(rfReplaceAll, rfIgnoreCase));
-  Y := StringReplace(FloatToStr(-Y2), ',', '.',
-    MkSet(rfReplaceAll, rfIgnoreCase));
-
-  {
-    bbox['pos'] :=[x0.round(), -y1.round()]; //
-    bbox['relpos'] :=[0, 0];
-    bbox['angle'] :=0;
-    bbox['size'] :=[(x1 - x0).round(), (y1 - y0).round()];
-    bbox['center'] :=[(x0 + bbox.size[0] / 2).round(), -(y0 + bbox.size[1] / 2).round()];
-  }
-
-  PnPout.Add('{');
-
-  PnPout.Add('"Designator":' + JSONStrToStr(Component.SourceDesignator) + ',');
-  PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
-  PnPout.Add('"Footprint":' + JSONStrToStr(Component.Pattern) + ',');
-
-  sl := GetComponentParameters(Component);
-
-  PnPout.Add('"PartNumber":' + JSONStrToStr
-    (sl.Values[ValueParameterName]) + ','); // TODO: CopyPaste error?
-  PnPout.Add('"Value":' + JSONStrToStr(sl.Values[ValueParameterName]) + ',');
-
-  PnPout.Add('"Fields":' + '[');
-
-  for hhhhi := 0 to SelectedFields.Count - 1 do
-  begin
-    if (hhhhi > 0) then
-      PnPout.Add(',');
-    hhhh := SelectedFields[hhhhi];
-    PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
-  end;
-  PnPout.Add('],');
-
-  PnPout.Add('"Group":' + '[');
-
-  for hhhhi := 0 to SelectedGroupParameters.Count - 1 do
-  begin
-    if (hhhhi > 0) then
-      PnPout.Add(',');
-    hhhh := SelectedGroupParameters[hhhhi];
-    PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
-  end;
-  PnPout.Add('],');
-
-  PnPout.Add('"X":' + (x) + ',');
-  PnPout.Add('"Y":' + (Y) + ',');
-  PnPout.Add('"Width":' + (Width) + ',');
-  PnPout.Add('"Height":' + (Height) + ',');
-  PnPout.Add('"NoBOM":' + JSONBoolToStr(NoBOM) + ',');
-
-  PnPout.Add('"Pads":' + '[');
-
-  PadsCount := 0;
-  Iter := Component.GroupIterator_Create;
-  Iter.AddFilter_ObjectSet(MkSet(ePadObject));
-  Iter.AddFilter_LayerSet(AllLayers);
-  Prim := Iter.FirstPCBObject;
-  while (Prim <> nil) do
-  begin
-    Pad := Prim;
-    Inc(PadsCount);
-    If (PadsCount > 1) Then
-      PnPout.Add(',');
-
-    PnPout.Add(ParsePad(Board, Prim, Pad));
-
-    // pads :=pads.concat(parsePad(Prim));
-    // if (isSMD and (Prim.Layer = eMultiLayer)) then begin
-    // isSMD :=false;
-    // end;
-    Prim := Iter.NextPCBObject;
-  end;
-  Component.GroupIterator_Destroy(Iter);
-
-  PnPout.Add(']');
-
-  PnPout.Add('}');
-  Result := PnPout.Text;
-  PnPout.Free;
-end;
-
-function PickAndPlaceOutputNative(OutputJS: Boolean): String;
-var
-  Board: IPCB_Board; // document board object
-  Component: IPCB_Component; // component object
-  Iterator: IPCB_BoardIterator;
-  SMDcomponent: Boolean;
-  BoardUnits: String;
-  // Current unit string mm/mils
-  PnPout: TStringList;
-  Count: Integer;
-  FileName: TString;
-  Document: IServerDocument;
-  pcbDocPath: TString;
-  flagRequirePcbDocFile: Boolean;
-  Separator: TString;
-  Iter, Prim: TObject;
-  PadsCount: Integer;
-  X1, Y1, X2, Y2, _W, _H: Single;
-  Width, Height: String;
-  CurrParm: IParameter;
-  NoBOM: Boolean;
-  ccc: IComponent;
-
-  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
-
-  _Document: IServerDocument;
-  // sl: TStringList;
-  tmpx, tmpy: String;
-  SelectedFields: TStringList;
-  SelectedGroupParameters: TStringList;
-  hhhhi: Integer;
-  hhhh: String;
-  StartTime, StopTime: TDateTime;
-  Elapsed: Integer;
-Begin
-  // Make sure the current Workspace opens or else quit this script
-  CurrWorkSpace := GetWorkSpace;
-  If (CurrWorkSpace = Nil) Then
-    Exit;
-
-  // Make sure the currently focussed Project in this Workspace opens or else
-  // quit this script
-  CurrProject := CurrWorkSpace.DM_FocusedProject;
-  If CurrProject = Nil Then
-    Exit;
-
-  flagRequirePcbDocFile := True;
-
-  FindProjectPcbDocFile(CurrProject, flagRequirePcbDocFile,
-    { var } pcbDocPath);
-
-  // TODO: Close
-  _Document := Client.OpenDocument('pcb', pcbDocPath);
-  Board := PCBServer.GetPCBBoardByPath(pcbDocPath);
-
-  If Not Assigned(Board) Then // check of active document
-  Begin
-    ShowMessage('The Current Document is not a PCB Document.');
-    Exit;
-  End;
-
-  StartTime := Now();
-
-  SelectedFields := GetSelectedFields();
-  SelectedGroupParameters := GetSelectedGroupParameters();
-
-  Iterator := Board.BoardIterator_Create;
-  Iterator.AddFilter_ObjectSet(MkSet(eComponentObject));
-  Iterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
-  Iterator.AddFilter_Method(eProcessAll);
-
-  Separator := GetSeparator();
-  Count := 0;
-  PnPout := TStringList.Create;
-  Component := Iterator.FirstPCBObject;
-
-  if (OutputJS) then
-  begin
-    PnPout.Add('var altiumbom = ');
-  end;
-  PnPout.Add('{');
-  PnPout.Add('"Signature":' + JSONStrToStr('Altium') + ',');
-  PnPout.Add('"Data":[');
-
-  While (Component <> Nil) Do
-  Begin
-    NoBOM := False;
-    ccc := GetCompFromCompEx(Component);
-    CurrParm := ccc.DM_GetParameterByName('Component Kind');
-    // (CurrParm <> nil) and
-    if (CurrParm.DM_Value = 'Standard (No BOM)') then
-    begin
-      NoBOM := True;
-    end;
-
-    // Print Pick&Place data of SMD components to file
-    if ComponentIsFittedInCurrentVariant(Component.SourceUniqueId, Component.SourceDesignator,
-      ProjectVariant) then
-      if (LayerFilterIndex = 0) or
-        ((LayerFilterCb = 1) and (Component.Layer = eTopLayer)) or
-        ((LayerFilterCb = 2) and (Component.Layer = eBottomLayer)) then
-      Begin
-        Inc(Count);
-        If (Count > 1) Then
-          PnPout.Add(',');
-
-        PnPout.Add(ParseComponent(Board, Component, SelectedFields, SelectedGroupParameters, NoBOM));
-      End;
-    Component := Iterator.NextPCBObject;
-  End;
-  Board.BoardIterator_Destroy(Iterator);
-
-  PnPout.Add('],');
-  PnPout.Add('"Board":[');
-
-  Count := 0;
-
-  Iter := Board.BoardIterator_Create;
-  // Iter.AddFilter_ObjectSet(eTrackObject);
-  Iter.AddFilter_LayerSet(MkSet(eKeepOutLayer));
-  Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject));
-  // Iter.AddFilter_ObjectSet(MkSet(eTrackObject));
-  { Iter.AddFilter_LayerSet(MkSet(pcb.Layers.OUTLINE_LAYER)); }
-  Iter.AddFilter_Method(eProcessAll);
-  Prim := Iter.FirstPCBObject;
-  while (Prim <> nil) do
-  begin
-    Inc(Count);
-    If (Count > 1) Then
-      PnPout.Add(',');
-
-    case (Prim.ObjectId) of
-      eArcObject:
-        begin
-          PnPout.Add(ParseArc(Board, Prim));
-        end;
-      eTrackObject:
-        begin
-          PnPout.Add(ParseTrack(Board, Prim));
-        end;
-    end;
-
-    Prim := Iter.NextPCBObject;
-  end;
-  Board.BoardIterator_Destroy(Iter);
-
-  PnPout.Add('],');
-  PnPout.Add('"BB":{');
-
-  // var bbox = {};
-  // bbox["minx"] = CoordToMMs(Board.BoardOutline.BoundingRectangle.Left).round();
-  // bbox["miny"] = -CoordToMMs(pcb.board.BoardOutline.BoundingRectangle.Top).round();
-  // bbox["maxx"] = CoordToMMs(pcb.board.BoardOutline.BoundingRectangle.Right).round();
-  // bbox["maxy"] = -CoordToMMs(pcb.board.BoardOutline.BoundingRectangle.Bottom).round();
-
-  EdgeX1 := JSONFloatToStr(CoordToMMs(Board.BoardOutline.BoundingRectangle.Left
-    - Board.XOrigin));
-  EdgeY1 := JSONFloatToStr(-CoordToMMs(Board.BoardOutline.BoundingRectangle.Top
-    - Board.YOrigin));
-  EdgeX2 := JSONFloatToStr(CoordToMMs(Board.BoardOutline.BoundingRectangle.Right
-    - Board.XOrigin));
-  EdgeY2 := JSONFloatToStr
-    (-CoordToMMs(Board.BoardOutline.BoundingRectangle.Bottom - Board.YOrigin));
-
-  PnPout.Add('"X1":' + (EdgeX1) + ',');
-  PnPout.Add('"Y1":' + (EdgeY1) + ',');
-  PnPout.Add('"X2":' + (EdgeX2) + ',');
-  PnPout.Add('"Y2":' + (EdgeY2));
-
-  PnPout.Add('},');
-  PnPout.Add('"Extra":[');
-
-  Count := 0;
-
-  Iter := Board.BoardIterator_Create;
-  // Iter.AddFilter_ObjectSet(eTrackObject);
-  Iter.AddFilter_LayerSet(MkSet(eTopOverlay, eBottomOverlay, eTopLayer,
-    eBottomLayer, eMultiLayer));
-  Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject, eTextObject,
-    ePolyObject, eRegionObject, eViaObject));
-  // Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject, eTextObject ));
-  // eFillObject, eRegionObject
-  // Iter.AddFilter_ObjectSet(MkSet(eViaObject));
-  // Iter.AddFilter_ObjectSet(MkSet(eTrackObject));
-  { Iter.AddFilter_LayerSet(MkSet(pcb.Layers.OUTLINE_LAYER)); }
-  Iter.AddFilter_Method(eProcessAll);
-  Prim := Iter.FirstPCBObject;
-  while (Prim <> nil) do
-  begin
-    // TODO: UGLY
-    if (Prim.ObjectId = eTextObject) and (Prim.IsHidden) then
-    begin
-      Prim := Iter.NextPCBObject;
-      continue;
-    end;
-    if ((Prim.Layer = eTopLayer) or (Prim.Layer = eBottomLayer)) and
-      (Prim.ObjectId <> eTrackObject) and (Prim.ObjectId <> eViaObject) and
-      (Prim.ObjectId <> ePolyObject) and (Prim.ObjectId <> eFillObject) and
-      (Prim.ObjectId <> eRegionObject) then
-    begin
-      Prim := Iter.NextPCBObject;
-      continue;
-    end;
-    if (Prim.ObjectId = eRegionObject) and
-      ((Prim.Kind() <> eRegionKind_Copper) or Prim.InPolygon()) then
-    begin
-      Prim := Iter.NextPCBObject;
-      continue;
-    end;
-    if ((Prim.ObjectId = ePolyObject)) and
-      ((Prim.Layer <> eTopLayer) and (Prim.Layer <> eBottomLayer)) then
-    begin
-      Prim := Iter.NextPCBObject;
-      continue;
-    end;
-
-    Inc(Count);
-    If (Count > 1) Then
-      PnPout.Add(',');
-
-    case (Prim.ObjectId) of
-      eTextObject:
-        begin
-          PnPout.Add(ParseText(Board, Prim));
-        end;
-      eArcObject:
-        begin
-          PnPout.Add(ParseArc2(Board, Prim));
-        end;
-      eTrackObject:
-        begin
-          PnPout.Add(ParseTrack2(Board, Prim));
-        end;
-      eViaObject:
-        begin
-          PnPout.Add(ParseVIA(Board, Prim));
-        end;
-      eRegionObject:
-        begin
-          PnPout.Add(ParseRegion(Board, Prim));
-        end;
-      ePolyObject:
-        begin
-          PnPout.Add(ParsePoly(Board, Prim));
-        end;
-    end;
-
-    Prim := Iter.NextPCBObject;
-  end;
-  Board.BoardIterator_Destroy(Iter);
-
-  PnPout.Add('],');
-  PnPout.Add('"Metadata":{');
-
-  PnPout.Add('"Company":' + JSONStrToStr(Company) + ',');
-  PnPout.Add('"Date":' + JSONStrToStr('todo2') + ',');
-  PnPout.Add('"Revision":' + JSONStrToStr(Revision) + ',');
-  PnPout.Add('"Title":' + JSONStrToStr(Title));
-
-  PnPout.Add('},');
-  PnPout.Add('"Settings":{');
-  PnPout.Add('"AddNets":' + JSONBoolToStr(AddNets) + ',');
-  PnPout.Add('"AddTracks":' + JSONBoolToStr(AddTracks) + ',');
-
-  PnPout.Add('"Fields":' + '[');
-
-  for hhhhi := 0 to SelectedFields.Count - 1 do
-  begin
-    if (hhhhi > 0) then
-      PnPout.Add(',');
-    hhhh := SelectedFields[hhhhi];
-    PnPout.Add(JSONStrToStr(hhhh));
-  end;
-  PnPout.Add(']');
-
-  PnPout.Add('}');
-  PnPout.Add('}');
-
-  if (OutputJS) then
-  begin
-    PnPout.Add(';');
-  end;
-
-  Result := PnPout.Text;
-
-  PnPout.Free;
-
-  {
-    Document  := Client.OpenDocument('Text', FileName);
-    If Document <> Nil Then
-    Client.ShowDocument(Document);
-
-    ShowMessage(IntToStr(Count) + ' were exported to Pick and Place file:' + #13 + Board.FileName + '.pic');
-  }
-  StopTime := Now();
-  Elapsed := Trunc((StopTime - StartTime) * 86400 * 1000);
-  // ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
-End;
-
-
-{.....................................................................................................................}
-{.                                              Generic JSON Generation                                              .}
-{.....................................................................................................................}
-
+{ ..................................................................................................................... }
+{ .                                              Generic JSON Generation                                              . }
+{ ..................................................................................................................... }
 
 function ParseArcGeneric(Board: IPCB_Board; Prim: TObject): String;
 var
@@ -1672,12 +603,12 @@ begin
   EdgeType := 'arc';
 
   PnPout.Add('{');
-  PnPout.Add('"start":' + '[' + EdgeX1 + ', ' + EdgeY1 + ']' + ',');
-  PnPout.Add('"endangle":' + EdgeY2 + ',');
+  PnPout.Add('"type":' + JSONStrToStr(EdgeType) + ',');
   PnPout.Add('"width":' + EdgeWidth + ',');
+  PnPout.Add('"start":' + '[' + EdgeX1 + ', ' + EdgeY1 + ']' + ',');
   PnPout.Add('"radius":' + EdgeRadius + ',');
   PnPout.Add('"startangle":' + EdgeX2 + ',');
-  PnPout.Add('"type":' + JSONStrToStr(EdgeType));
+  PnPout.Add('"endangle":' + EdgeY2);
   PnPout.Add('}');
 
   Result := PnPout.Text;
@@ -1690,6 +621,7 @@ var
   PnPout: TStringList;
   EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
   EdgeType: String;
+  Net: String;
 begin
   PnPout := TStringList.Create;
 
@@ -1699,11 +631,19 @@ begin
   EdgeX2 := JSONFloatToStr(CoordToMMs(Prim.X2 - Board.XOrigin));
   EdgeY2 := JSONFloatToStr(-CoordToMMs(Prim.Y2 - Board.YOrigin));
 
+  Net := 'No Net';
+  if Prim.Net <> nil then
+    Net := Prim.Net.name;
+  Nets.Add(Net);
+
   EdgeType := 'segment';
 
   PnPout.Add('{');
   if not NoType then
     PnPout.Add('"type":' + JSONStrToStr(EdgeType) + ',');
+  if NoType then
+    PnPout.Add('"net":' + JSONStrToStr(Net) + ',');
+
   PnPout.Add('"start":' + '[' + EdgeX1 + ', ' + EdgeY1 + ']' + ',');
   PnPout.Add('"end":' + '[' + EdgeX2 + ', ' + EdgeY2 + ']' + ',');
   PnPout.Add('"width":' + EdgeWidth);
@@ -1720,6 +660,7 @@ var
   EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
   EdgeType: String;
   PadDrillWidth: String;
+  Net: String;
 begin
   PnPout := TStringList.Create;
 
@@ -1728,11 +669,18 @@ begin
   EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.Y - Board.YOrigin));
   PadDrillWidth := JSONFloatToStr(CoordToMMs(Prim.HoleSize));
 
+  Net := 'No Net';
+  if Prim.Net <> nil then
+    Net := Prim.Net.name;
+  Nets.Add(Net);
+
   EdgeType := 'segment';
 
   PnPout.Add('{');
   if not NoType then
     PnPout.Add('"type":' + JSONStrToStr(EdgeType) + ',');
+  if NoType then
+    PnPout.Add('"net":' + JSONStrToStr(Net) + ',');
   PnPout.Add('"start":' + '[' + EdgeX1 + ', ' + EdgeY1 + ']' + ',');
   PnPout.Add('"end":' + '[' + EdgeX1 + ', ' + EdgeY1 + ']' + ',');
   PnPout.Add('"width":' + EdgeWidth + ',');
@@ -2040,36 +988,34 @@ begin
   Net := 'No Net';
   if Prim.Net <> nil then
     Net := Prim.Net.name;
-
-  PadType := 'smd';
+  Nets.Add(Net);
 
   PnPout.Add('"layers":' + PadLayer + ',');
-  if PadPin1 then
-    PnPout.Add('"pin1":1,');
   PnPout.Add('"pos":' + '[' + PadX + ', ' + PadY + ']' + ',');
   PnPout.Add('"size":' + '[' + PadWidth + ', ' + PadHeight + ']' + ',');
   PnPout.Add('"angle":' + PadAngle + ',');
   PnPout.Add('"shape":' + JSONStrToStr(PadShape) + ',');
-  PnPout.Add('"type":' + JSONStrToStr(PadType));
+  // polygons
+  // radius
+  // chamfpos
+  // chamfratio
+  // type HERE
 
-  (*
-    PnPout.Add('"Layer":' + JSONStrToStr(PadLayer) + ',');
-    PnPout.Add('"Type":' + JSONStrToStr(PadType) + ',');
-    PnPout.Add('"Shape":' + JSONStrToStr(PadShape) + ',');
-    if PadType = 'th' then
-    begin
-    PnPout.Add('"DrillShape":' + JSONStrToStr(PadDrillShape) + ',');
-    PnPout.Add('"DrillWidth":' + (PadDrillWidth) + ',');
-    PnPout.Add('"DrillHeight":' + (PadDrillHeight) + ',');
-    end;
-    // PnPout.Add('"Debug":'+'"'+Preprocess(Prim.Layer)+'"'+',');
-    PnPout.Add('"X":' + (PadX) + ',');
-    PnPout.Add('"Y":' + (PadY) + ',');
-    PnPout.Add('"Width":' + (PadWidth) + ',');
-    PnPout.Add('"Height":' + (PadHeight) + ',');
-    PnPout.Add('"Angle":' + (PadAngle) + ',');
-    PnPout.Add('"Net":' + JSONStrToStr(Net));
-  *)
+  if PadPin1 then
+  begin
+    PnPout.Add('"pin1":' + '1' + ',');
+  end;
+  if PadType = 'th' then
+  begin
+    PnPout.Add('"drillshape":' + JSONStrToStr(PadDrillShape) + ',');
+    PnPout.Add('"drillsize":' + '[' + PadDrillWidth + ', ' + PadDrillHeight +
+      ']' + ',');
+  end;
+  // offset
+  PnPout.Add('"net":' + JSONStrToStr(Net) + ',');
+
+  // TODO: At the end for ease - it's mandatory
+  PnPout.Add('"type":' + JSONStrToStr(PadType));
 
   PnPout.Add('}');
   Result := PnPout.Text;
@@ -2220,6 +1166,7 @@ begin
   Net := 'No Net';
   if Prim.Net <> nil then
     Net := Prim.Net.name;
+  Nets.Add(Net);
 
   EdgeType := 'polygon';
   PnPout.Add('{');
@@ -2229,6 +1176,8 @@ begin
     PnPout.Add('"pos":' + '[0,0]' + ',');
     PnPout.Add('"angle":' + '0' + ',');
   end;
+  if NoType then
+    PnPout.Add('"net":' + JSONStrToStr(Net) + ',');
   // PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
   // PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
   // PnPout.Add('"Net":' + JSONStrToStr(Net) + ',');
@@ -2308,6 +1257,7 @@ begin
   Net := 'No Net';
   if Prim.Net <> nil then
     Net := Prim.Net.name;
+  Nets.Add(Net);
 
   EdgeType := 'polygon';
   PnPout.Add('{');
@@ -2317,6 +1267,8 @@ begin
     PnPout.Add('"pos":' + '[0,0]' + ',');
     PnPout.Add('"angle":' + '0' + ',');
   end;
+  if NoType then
+    PnPout.Add('"net":' + JSONStrToStr(Net) + ',');
   // PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
   // PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
   // PnPout.Add('"Net":' + JSONStrToStr(Net) + ',');
@@ -2365,7 +1317,146 @@ begin
   PnPout.Free;
 end;
 
-function PickAndPlaceOutputGeneric: String;
+function ParseTextGeneric(Board: IPCB_Board; Prim: TObject): String;
+var
+  PnPout: TStringList;
+  Layer: String;
+  X1, Y1, X2, Y2, _W, _H: Single;
+  EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeHeight: String;
+  EdgeType: String;
+begin
+  PnPout := TStringList.Create;
+
+  If (Prim.Layer = eTopOverlay) Then
+    Layer := 'TopOverlay'
+  Else If (Prim.Layer = eBottomOverlay) Then
+    Layer := 'BottomOverlay'
+  Else If (Prim.Layer = eTopLayer) Then
+    Layer := 'TopLayer'
+  Else If (Prim.Layer = eBottomLayer) Then
+    Layer := 'BottomLayer';
+
+  // X1 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Left- Board.XOrigin);
+  // Y1 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Bottom- Board.YOrigin);
+  // X2 :=CoordToMMs(Prim.BoundingRectangleNoNameCommentForSignals.Right- Board.XOrigin);
+  // Y2 :=CoordToMMs(Component.BoundingRectangleNoNameCommentForSignals.Top- Board.YOrigin);
+
+  // var x0, y0, x1, y1;
+  X1 := CoordToMMs(Prim.BoundingRectangleForSelection.Left - Board.XOrigin);
+  Y1 := CoordToMMs(Prim.BoundingRectangleForSelection.Bottom - Board.YOrigin);
+  X2 := CoordToMMs(Prim.BoundingRectangleForSelection.Right - Board.XOrigin);
+  Y2 := CoordToMMs(Prim.BoundingRectangleForSelection.Top - Board.YOrigin);
+
+  _W := X2 - X1;
+  _H := Y2 - Y1;
+
+  EdgeX1 := JSONFloatToStr(X1 + _W / 2);
+  EdgeY1 := JSONFloatToStr(-(Y1 + _H / 2));
+
+  // bbox["size"] = [(x1 - x0).round(), (y1 - y0).round()];
+
+  // bbox["center"] = [(x0 + bbox.size[0] / 2).round(), -(y0 + bbox.size[1] / 2).round()];
+
+  EdgeX2 := JSONFloatToStr(Prim.Rotation);
+
+  if (Prim.TextKind = 0) then
+  begin
+    // res["thickness"] = CoordToMMs(Prim.Width).round();
+    EdgeHeight := JSONFloatToStr(CoordToMMs(Prim.Size));
+    EdgeWidth := EdgeHeight; // single char's width in kicad
+  end
+  else if (Prim.TextKind = 1) then
+  begin
+    EdgeHeight := JSONFloatToStr(CoordToMMs(Prim.TTFTextHeight * 0.6));
+    EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.TTFTextWidth * 0.9 /
+      Length(Prim.Text)));
+    // res["thickness"] = CoordToMMs(res["height"] * 0.1);
+  end;
+  // OPS TODO
+  {
+    else
+    begin
+    //OPS TODO
+    EdgeHeight := JSONFloatToStr(0);
+    EdgeWidth := JSONFloatToStr(0);
+    end;
+  }
+
+  EdgeType := 'text';
+  PnPout.Add('{');
+  PnPout.Add('"pos":' + '[' + EdgeX1 + ',' + EdgeY1 + ']' + ',');
+  PnPout.Add('"text":' + JSONStrToStr(_String_(Prim.Text)) + ',');
+  // svgpath
+  // polygons
+  PnPout.Add('"height":' + EdgeHeight + ',');
+  PnPout.Add('"width":' + EdgeWidth + ',');
+  PnPout.Add('"justify":' + '[0, 0]' + ',');
+  PnPout.Add('"thickness":' + JSONFloatToStr(0.15) + ',');
+  if Prim.MirrorFlag then
+    PnPout.Add('"attr":' + '["mirrored"]' + ',')
+  else
+    PnPout.Add('"attr":' + '[]' + ',');
+  if Prim.IsDesignator then
+    PnPout.Add('"ref":' + '1' + ',');
+  if Prim.IsComment then
+    PnPout.Add('"val":' + '1' + ',');
+  PnPout.Add('"angle":' + EdgeX2);
+
+  // PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
+  // PnPout.Add('"Type":' + JSONStrToStr(EdgeType) + ',');
+
+  // PnPout.Add('"Mirrored":' + JSONBoolToStr(Prim.MirrorFlag) + ',');
+  PnPout.Add('}');
+
+  (*
+    "pos": [x, y],
+    "text": text,
+    // SVG path of the text given as 'd' attribute of svg spec.
+    // If this parameter is specified then height, width, angle,
+    // text attributes and justification is ignored. Rendering engine
+    // will not attempt to read character data from newstroke font and
+    // will draw the path as is. "thickness" will be used as stroke width.
+    "svgpath": svgpath,
+    // If polygons are specified then remaining attributes are ignored
+    "polygons": [
+    // Polygons are described as set of outlines.
+    [
+    [point1x, point1y], [point2x, point2y], ...
+    ],
+    ...
+    ],
+    "height": height,
+    "width": width,
+    // -1: justify left/top
+    // 0: justify center
+    // 1: justify right/bot
+    "justify": [horizontal, vertical],
+    "thickness": thickness,
+    "attr": [
+    // may include none, one or both
+    "italic", "mirrored"
+    ],
+    "angle": angle,
+    // Present only if text is reference designator
+    "ref": 1,
+    // Present only if text is component value
+    "val": 1,
+  *)
+  Result := PnPout.Text;
+  PnPout.Free;
+end;
+
+function ParseFontData: String;
+var
+  sl: TStringList;
+begin
+  sl := TStringList.Create;
+  sl.LoadFromFile(GetWDFileName('altium-fontdata.js'));
+  Result := sl.Text;
+  sl.Free;
+end;
+
+function PickAndPlaceOutputGeneric(Dummy: Boolean): String;
 var
   Board: IPCB_Board; // document board object
   Component: IPCB_Component; // component object
@@ -2410,6 +1501,8 @@ var
   Footprints: String;
   SilkscreenF: String;
   SilkscreenB: String;
+  FontData: String;
+  i: Integer;
 Begin
   // Make sure the current Workspace opens or else quit this script
   CurrWorkSpace := GetWorkSpace;
@@ -2439,15 +1532,23 @@ Begin
 
   StartTime := Now();
 
-  SelectedFields := GetSelectedFields();
-  SelectedGroupParameters := GetSelectedGroupParameters();
+  PopulateDynamicFields(Board);
+
+  Nets := TStringList.Create;
+  Nets.Sorted := True;
+  Nets.Duplicates := dupIgnore;
+
+  Nets.Add('No Net');
+
+  SelectedFields := GetSelectedFields(0);
+  SelectedGroupParameters := GetSelectedGroupParameters(0);
 
   Iterator := Board.BoardIterator_Create;
   Iterator.AddFilter_ObjectSet(MkSet(eComponentObject));
   Iterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
   Iterator.AddFilter_Method(eProcessAll);
 
-  Separator := GetSeparator();
+  Separator := GetSeparator(0);
   Count := 0;
   PnPout := TStringList.Create;
   Component := Iterator.FirstPCBObject;
@@ -2455,7 +1556,10 @@ Begin
   While (Component <> Nil) Do
   Begin
     NoBOM := False;
+    // OPS/TODO
+
     ccc := GetCompFromCompEx(Component);
+    // TODO: HOW?
     CurrParm := ccc.DM_GetParameterByName('Component Kind');
     // (CurrParm <> nil) and
     if (CurrParm.DM_Value = 'Standard (No BOM)') then
@@ -2464,8 +1568,8 @@ Begin
     end;
 
     // Print Pick&Place data of SMD components to file
-    if ComponentIsFittedInCurrentVariant(Component.SourceUniqueId, Component.SourceDesignator,
-      ProjectVariant) then
+    if ComponentIsFittedInCurrentVariant(Component.SourceUniqueId,
+      Component.SourceDesignator, ProjectVariant) then
       if (LayerFilterIndex = 0) or
         ((LayerFilterCb = 1) and (Component.Layer = eTopLayer)) or
         ((LayerFilterCb = 2) and (Component.Layer = eBottomLayer)) then
@@ -2612,11 +1716,33 @@ Begin
     case (Prim.ObjectId) of
       eTextObject:
         begin
-          // PnPout.Add(ParseText(Board, Prim));
+          If (Prim.Layer = eTopOverlay) Then
+          begin
+            if Length(SilkscreenF) > 0 then
+              SilkscreenF := SilkscreenF + ', ';
+            SilkscreenF := SilkscreenF + ParseTextGeneric(Board, Prim);
+          end;
+          If (Prim.Layer = eBottomOverlay) Then
+          begin
+            if Length(SilkscreenB) > 0 then
+              SilkscreenB := SilkscreenB + ', ';
+            SilkscreenB := SilkscreenB + ParseTextGeneric(Board, Prim);
+          end;
         end;
       eArcObject:
         begin
-          // PnPout.Add(ParseArc2(Board, Prim));
+          If (Prim.Layer = eTopOverlay) Then
+          begin
+            if Length(SilkscreenF) > 0 then
+              SilkscreenF := SilkscreenF + ', ';
+            SilkscreenF := SilkscreenF + ParseArcGeneric(Board, Prim);
+          end;
+          If (Prim.Layer = eBottomOverlay) Then
+          begin
+            if Length(SilkscreenB) > 0 then
+              SilkscreenB := SilkscreenB + ', ';
+            SilkscreenB := SilkscreenB + ParseArcGeneric(Board, Prim);
+          end;
         end;
       eTrackObject:
         begin
@@ -2722,8 +1848,7 @@ Begin
   end;
   Board.BoardIterator_Destroy(Iter);
 
-  // PnPout.Add('],');
-  // PnPout.Add('"Metadata":{');*)
+  FontData := ParseFontData();
 
   Metadata := '';
 
@@ -2787,8 +1912,15 @@ Begin
   PnPout.Add('"B": [' + ZonesB + ']');
   PnPout.Add('},');
 
-  PnPout.Add('"nets": [],');
-  PnPout.Add('"font_data": {}');
+  PnPout.Add('"nets": [');
+  for i := 0 to Nets.Count - 1 do
+  begin
+    if i > 0 then
+      PnPout.Add(',');
+    PnPout.Add(JSONStrToStr(Nets[i]));
+  end;
+  PnPout.Add('],');
+  PnPout.Add('"font_data": ' + FontData + '');
   PnPout.Add('},');
   PnPout.Add('"components": [' + Components + ']');
   PnPout.Add('}');
@@ -2796,6 +1928,8 @@ Begin
   Result := PnPout.Text;
 
   PnPout.Free;
+
+  Nets.Free;
 
   {
     Document  := Client.OpenDocument('Text', FileName);
@@ -2809,9 +1943,9 @@ Begin
   // ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
 End;
 
-{.....................................................................................................................}
-{.                                              Generic JSON Generation                                              .}
-{.....................................................................................................................}
+{ ..................................................................................................................... }
+{ .                                              Generic JSON Generation                                              . }
+{ ..................................................................................................................... }
 
 function StringLoadFromFile(FileName: String): String;
 var
@@ -2847,24 +1981,23 @@ begin
   // Result := StringReplace(a, '///'+'SPLITJS', e, MkSet(rfReplaceAll,rfIgnoreCase));
 end;
 
+{ ..................................................................................................................... }
+{ .                                               Output File Generation                                              . }
+{ ..................................................................................................................... }
 
-{.....................................................................................................................}
-{.                                               Output File Generation                                              .}
-{.....................................................................................................................}
-
-
-procedure GenerateHTML(pcbdata);
+procedure GenerateHTML(pcbdata, config: String);
 var
   s: TStringList;
   Data: String;
+  AltiumPCBData, AltiumFontData: String;
 begin
-  // Load template into Data variable
-  s := TStringList.Create;
-  s.LoadFromFile(GetWDFileName('web\ibom.html'));
-  Data := s.Text;
-  s.Free;
+  Data := StringLoadFromFile(GetWDFileName('web\ibom.html'));
 
-  // Replace template sections with contents of files and/or content from the PCB board
+  AltiumFontData := StringLoadFromFile(GetWDFileName('altium-fontdata.js'));
+
+  AltiumPCBData := StringLoadFromFile(GetWDFileName('altium-pcbdata.js'));
+  AltiumPCBData := ReplaceEx2(AltiumPCBData, 'FONTDATA', AltiumFontData);
+
   Data := ReplaceEx(Data, 'CSS', GetWDFileName('web\ibom.css'));
   Data := ReplaceEx(Data, 'USERCSS',
     GetWDFileName('web\user-file-examples\user.css'));
@@ -2872,9 +2005,9 @@ begin
   Data := ReplaceEx(Data, 'LZ-STRING', GetWDFileName('web\lz-string.js'));
   Data := ReplaceEx(Data, 'POINTER_EVENTS_POLYFILL',
     GetWDFileName('web\pep.js'));
-  Data := ReplaceEx2(Data, 'CONFIG', GenerateNativeConfig());
-  Data := ReplaceEx2(Data, 'PCBDATA', pcbdata + #13#10 +
-    StringLoadFromFile(GetWDFileName('altium-pcbdata.js')));
+  Data := ReplaceEx2(Data, 'CONFIG', config);
+  Data := ReplaceEx2(Data, 'PCBDATA', pcbdata + #13#10 + AltiumPCBData);
+
   Data := ReplaceEx(Data, 'UTILJS', GetWDFileName('web\util.js'));
   Data := ReplaceEx(Data, 'RENDERJS', GetWDFileName('web\render.js'));
   Data := ReplaceEx(Data, 'TABLEUTILJS', GetWDFileName('web\table-util.js'));
@@ -2894,8 +2027,7 @@ begin
   s.Free;
 end;
 
-
-function GenerateNativeConfig: String;
+function GenerateNativeConfig(Dummy: Integer): String;
 var
   PnPout: TStringList;
   s: TStringList;
@@ -2916,7 +2048,7 @@ Begin
   PnPout.Add('"show_silkscreen":' + JSONBoolToStr(True) + ',');
   PnPout.Add('"fields":' + '[');
 
-  s := GetSelectedFields();
+  s := GetSelectedFields(0);
   for i := 0 to s.Count - 1 do
   begin
     if i > 0 then
@@ -2935,8 +2067,7 @@ Begin
   PnPout.Free;
 end;
 
-
-procedure DumpAsJS(pcbdata);
+procedure DumpAsJS(pcbdata: String);
 var
   s: TStringList;
   Data: String;
@@ -2947,7 +2078,7 @@ begin
   s.Free;
 end;
 
-procedure DumpAsJSON(pcbdata);
+procedure DumpAsJSON(pcbdata: String);
 var
   s: TStringList;
   Data: String;
@@ -2958,17 +2089,24 @@ begin
   s.Free;
 end;
 
-{.....................................................................................................................}
-{.                                                   State Handling                                                  .}
-{.....................................................................................................................}
+{ ..................................................................................................................... }
+{ .                                                   State Handling                                                  . }
+{ ..................................................................................................................... }
 
-Procedure Initialize;
-Begin
+procedure Initialize(Dummy: Integer);
+begin
   // Open Workspace, Project, Get Variants, etc.
-  InitializeProject();
-End;
+  InitializeProject(0);
 
-Procedure InitializeProject;
+  // Add Parameters to Parameters ComboBox
+  //LoadParameterNames(0);
+
+  // Based on current settings on the form, re-write the description of what
+  // action will be done when the OK button is pressed
+  // ReWriteActionLabel( 0 );
+end;
+
+Procedure InitializeProject(Dummy: Integer);
 Var
   ProjVarIndex: Integer; // Index for iterating through variants
 Begin
@@ -2984,7 +2122,7 @@ Begin
     Exit;
 
   // [!!!]
-  SetupProjectVariant();
+  SetupProjectVariant(0);
   {
     // Determine how many Assembly Variants are defined within this focussed Project
     ProjectVariantCount := CurrProject.DM_ProjectVariantCount;
@@ -3000,10 +2138,13 @@ Begin
     // Choose first variant to start with
     VariantsComboBox.ItemIndex := 0;
     ProjectVariant := CurrProject.DM_ProjectVariants[ 0 ];
-  }
+
+    // Based on current settings on the form, re-write the description of what
+    // action will be done when the OK button is pressed
+    ReWriteActionLabel( 0 ); }
 End;
 
-procedure SetupProjectVariant;
+procedure SetupProjectVariant(Dummy: Integer);
 Var
   ProjVarIndex: Integer; // Index for iterating through variants
   TempVariant: IProjectVariant; // A temporary Handle for a ProjectVariant
@@ -3028,9 +2169,9 @@ Begin
 End;
 
 {
- Transfers the global state variables into the Form object values
+  Transfers the global state variables into the Form object values
 }
-procedure SetState_Controls;
+procedure SetState_Controls(Dummy: Integer);
 var
   i: Integer;
   tmpn: String;
@@ -3082,7 +2223,7 @@ Procedure SetState_FromParameters(AParametersList: String);
 Var
   s: String;
 Begin
-  InitializeProject();
+  InitializeProject(0);
 
   // Defaults definition
   {
@@ -3161,13 +2302,13 @@ Begin
     GroupParametersNames.DelimitedText := s;
 
   // Transfer global variable state into Form objects
-  SetState_Controls();
+  SetState_Controls(0);
 End;
 
 {
- Transfers the Form object values into the global state variables
+  Transfers the Form object values into the global state variables
 }
-procedure GetState_Controls;
+procedure GetState_Controls(Dummy: Integer);
 var
   i: Integer;
 Begin
@@ -3202,9 +2343,9 @@ Begin
   /// ////////////////////////////////////////////
 End;
 
-Function GetState_FromParameters: String;
+Function GetState_FromParameters(Dummy: Integer): String;
 Begin
-  GetState_Controls();
+  GetState_Controls(0);
 
   Result := '';
   { Result := Result +       'ParameterName='        + ParameterName;
@@ -3240,11 +2381,9 @@ begin
   s.Free;
 end;
 
-
-{.....................................................................................................................}
-{.                                                OutputJob Interface                                                .}
-{.....................................................................................................................}
-
+{ ..................................................................................................................... }
+{ .                                                OutputJob Interface                                                . }
+{ ..................................................................................................................... }
 
 {
   PredictOutputFileNames should return the full path names of all files that
@@ -3266,15 +2405,16 @@ Begin
   If FormatIndex = 0 Then
   Begin
     OutputFileNames.Add(GetOutputFileNameWithExtension('.html'));
-  End Else If FormatIndex = 1 Then Begin
+  End
+  Else If FormatIndex = 1 Then
+  Begin
     OutputFileNames.Add(GetOutputFileNameWithExtension('.js'));
-  End Else If FormatIndex = 2 Then Begin
+  End
+  Else
+  Begin
     OutputFileNames.Add(GetOutputFileNameWithExtension('.json'));
-  End Else If FormatIndex = 3 Then Begin
-    OutputFileNames.Add(GetOutputFileNameWithExtension('.json'));
-  End Else Begin
-    OutputFileNames.Add(GetOutputFileNameWithExtension('.unknown_format_choice'));
   End;
+  //TODO: else assert
 
   Result := OutputFileNames.DelimitedText;
   OutputFileNames.Free;
@@ -3290,12 +2430,12 @@ End;
 Function Configure(Parameters: String): String;
 Begin
   Result := '';
-  Initialize;
+  Initialize(0);
   SetState_FromParameters(Parameters);
   RunAsOutputJob := True;
   If MainFrm.ShowModal = mrOK Then
   Begin
-    Result := GetState_FromParameters();
+    Result := GetState_FromParameters(0);
     Close;
   End;
 End;
@@ -3305,41 +2445,40 @@ End;
   It generates an output file(s) without showing the form. The settings to use are
   supplied from OutJob as a parameter string (whose format we can define).
 }
-Procedure Generate(Parameters: String);
-Var
-  config, jsString, jsonString: String;
-  generateJS: Boolean;
-Begin
+procedure Generate(Parameters: String);
+var
+  tmp, cfg: String;
+begin
   SetState_FromParameters(Parameters);
 
-  generateJS := (FormatIndex < 2);
-
-  If FormatIndex = 0 Then
-  Begin
+  if FormatIndex = 0 then
+  begin
     // Generate HTML file
-    jsString := PickAndPlaceOutputNative(generateJS);
-    GenerateHTML(jsString);
-  End Else If FormatIndex = 1 Then Begin
+    tmp := 'var altiumbom = ' + PickAndPlaceOutputGeneric
+      (FormatIndex < 2) + ';';
+    cfg := GenerateNativeConfig(0);
+    GenerateHTML(tmp, cfg);
+  end
+  else if FormatIndex = 1 then
+  begin
     // Generate JSON in JavaScript file
-    jsString := PickAndPlaceOutputNative(generateJS);
-    DumpAsJS(jsString);
-  End Else If FormatIndex = 2 Then Begin
-    // Generate native JSON file
-    jsonString := PickAndPlaceOutputNative(generateJS);
-    DumpAsJSON(jsonString);
-  End Else Begin
+    tmp := 'var altiumbom = ' + PickAndPlaceOutputGeneric
+      (FormatIndex < 2) + ';';
+    DumpAsJS(tmp);
+  end
+  else
+  begin
     // Generate generic JSON file, according to
     // https://github.com/openscopeproject/InteractiveHtmlBom/blob/master/InteractiveHtmlBom/ecad/schema/genericjsonpcbdata_v1.schema
-    jsonString := PickAndPlaceOutputGeneric();
-    DumpAsJSON(jsonString);
-  End;
-End;
+    tmp := PickAndPlaceOutputGeneric(FormatIndex < 2);
+    DumpAsJSON(tmp);
+  end;
+  //TODO: else assert
+end;
 
-
-{.....................................................................................................................}
-{.                                                     Form Events                                                   .}
-{.....................................................................................................................}
-
+{ ..................................................................................................................... }
+{ .                                                     Form Events                                                   . }
+{ ..................................................................................................................... }
 
 {
   OnFormShow is called when the form is shown, regardless if the form is shown
@@ -3352,12 +2491,14 @@ begin
   Begin
     // Configure does the initialization for us
     OKBtn.Caption := 'Save Config';
-  End Else Begin
+  End
+  Else
+  Begin
     // This is our entry point if the form is opened directly.
-    Initialize;
-    PopulateChoiceFields();
+    Initialize(0);
+    PopulateChoiceFields(0);
     SetState_FromParameters('');
-    SetState_Controls;
+    SetState_Controls(0);
     OKBtn.Caption := 'Generate';
   End;
 end;
@@ -3367,8 +2508,10 @@ Begin
   If RunAsOutputJob Then
   Begin
     ModalResult := mrOK;
-  End Else Begin
-    Generate(GetState_FromParameters());
+  End
+  Else
+  Begin
+    Generate(GetState_FromParameters(0));
     Close;
   End;
 End;
@@ -3378,24 +2521,24 @@ Begin
   If RunAsOutputJob Then
   Begin
     ModalResult := mrCancel;
-  End Else Begin
+  End
+  Else
+  Begin
     Close;
   End;
 End;
 
+{ ..................................................................................................................... }
+{ .                                                  Form Interaction                                                 . }
+{ ..................................................................................................................... }
 
-{.....................................................................................................................}
-{.                                                  Form Interaction                                                 .}
-{.....................................................................................................................}
-
-
-procedure PopulateChoiceFields;
+procedure PopulateChoiceFields(Dummy: Integer);
 Var
   Board: IPCB_Board; // document board object
 Begin
-  PopulateStaticFields();
+  PopulateStaticFields(0);
 
-  Board := GetBoard();
+  Board := GetBoard(0);
   PopulateDynamicFields(Board);
 End;
 
@@ -3442,9 +2585,7 @@ begin
   GroupParametersClb.Items.AddStrings(stringList);
 end;
 
-procedure PopulateStaticFields;
-Var
-  Board: IPCB_Board; // document board object
+procedure PopulateStaticFields(Dummy: Integer);
 Begin
   LayerFilterCb.Items.Add('Both');
   LayerFilterCb.Items.Add('Top');
@@ -3453,10 +2594,15 @@ Begin
   FormatCb.Items.Add('HTML');
   FormatCb.Items.Add('JS');
   FormatCb.Items.Add('JSON');
-  FormatCb.Items.Add('JSON Generic');
 End;
 
-function GetSelectedFields: TStringList;
+procedure RunGUI;
+begin
+  // MEM_AllowUnder.Text := TEXTBOXINIT;
+  MainFrm.ShowModal;
+end;
+
+function GetSelectedFields(Dummy: Integer): TStringList;
 var
   s: TStringList;
   i: Integer;
@@ -3470,7 +2616,7 @@ begin
   Result := s;
 end;
 
-function GetSelectedGroupParameters: TStringList;
+function GetSelectedGroupParameters(Dummy: Integer): TStringList;
 var
   s: TStringList;
   i: Integer;
@@ -3483,4 +2629,3 @@ begin
   end;
   Result := s;
 end;
-
