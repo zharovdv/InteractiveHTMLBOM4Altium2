@@ -29,6 +29,81 @@ Var
   ValueParameterName: String;
   ColumnsParametersNames: TStringList;
   GroupParametersNames: TStringList;
+  RunAsOutputJob: Boolean;
+
+
+procedure SetupProjectVariant; forward;
+Function GetBoard: IPCB_Board; forward;
+function GenerateNativeConfig: String; forward;
+procedure PopulateChoiceFields; forward;
+procedure PopulateStaticFields; forward;
+procedure PopulateDynamicFields(Board: IPCB_Board); forward;
+Procedure InitializeProject; forward;
+function GetSelectedFields: TStringList; forward;
+function GetSelectedGroupParameters: TStringList; forward;
+
+{.....................................................................................................................}
+{.                                              Global Variable Mapping                                              .}
+{.....................................................................................................................}
+
+
+function GetSeparator: String;
+var
+  Separator: TString;
+begin
+  case FieldSeparatorIndex of
+    0:
+      Separator := ',';
+    1:
+      Separator := ';';
+    2:
+      Separator := ' ';
+    3:
+      Separator := #9;
+    // else
+  end;
+
+  Result := Separator;
+end;
+
+
+{.....................................................................................................................}
+{.                                            Path and Filename Handling                                             .}
+{.....................................................................................................................}
+
+
+function GetPluginExecutableFileName: String;
+var
+  i: Integer;
+  Path: String;
+  CurrentDir: String;
+  Document: IDocument;
+begin
+  Result := PluginExecutable;
+  if not IsPathRelative(PluginExecutable) then
+    Exit;
+
+  Result := ExpandFileName(PluginExecutable);
+
+  for i := 0 to CurrProject.DM_LogicalDocumentCount - 1 do
+  begin
+    Document := CurrProject.DM_LogicalDocuments(i);
+    if Document.DM_FileName <> 'GOSTBOMAltium.pas' then
+      continue;
+
+    Path := ExtractFilePath(Document.DM_FullPath);
+    if not DirectoryExists(Path) then
+      continue;
+
+    CurrentDir := GetCurrentDir;
+    if not SetCurrentDir(Path) then
+      continue;
+
+    Result := ExpandFileName(PluginExecutable);
+    SetCurrentDir(CurrentDir);
+  end;
+end;
+
 
 Function GetOutputFileNameWithExtension(Ext: String): String;
 Begin
@@ -40,6 +115,38 @@ Begin
     ChangeFileExt(TargetFileName, Ext);
   // CurrString := StringReplace( CurrString, '<DATE>',    DateStr,    MkSet( rfReplaceAll, rfIgnoreCase ) );
 End;
+
+function GetWDFileName(FF: String): String;
+var
+  i: Integer;
+  Path: String;
+  CurrentDir: String;
+  Document: IDocument;
+begin
+  Result := FF;
+  if not IsPathRelative(FF) then
+    Exit;
+
+  Result := ExpandFileName(FF);
+
+  for i := 0 to CurrProject.DM_LogicalDocumentCount - 1 do
+  begin
+    Document := CurrProject.DM_LogicalDocuments(i);
+    if Document.DM_FileName <> 'InteractiveHTMLBOM4Altium2.pas' then
+      continue;
+
+    Path := ExtractFilePath(Document.DM_FullPath);
+    if not DirectoryExists(Path) then
+      continue;
+
+    CurrentDir := GetCurrentDir;
+    if not SetCurrentDir(Path) then
+      continue;
+
+    Result := ExpandFileName(FF);
+    SetCurrentDir(CurrentDir);
+  end;
+end;
 
 { ***************************************************************************
   * function FindProjectPcbDocFile()
@@ -123,94 +230,99 @@ begin
 
 end; { end FindProjectPcbDocFile() }
 
-Function UseItEx(_CurrComponent, _CurrPart: TString;
-  _ProjectVariant: IProjectVariant): Boolean;
-var
-  // _CurrPart: IPart;
-  ComponentVariation: IComponentVariation;
-begin
-  // [!!!] UGLY
-  // _CurrPart := _CurrComponent.DM_SubParts[0];
-  if _ProjectVariant = nil then
-  begin
-    if pos('@', _CurrComponent) <> 0 then
-    begin
-      Result := False;
-    end
-    else
-    begin
-      Result := True;
-    end;
-  end;
 
-  if _ProjectVariant <> nil then
-  begin
-    ComponentVariation := _ProjectVariant.DM_FindComponentVariationByDesignator
-      (_CurrPart);
-    if ComponentVariation <> nil then
-    begin
-      if _CurrComponent <> ComponentVariation.DM_UniqueId + '@' +
-        _ProjectVariant.DM_Description then
-      begin
-        Result := False;
-      end
-      else
-      begin
-        Result := True;
-      end;
-      // [!!!] Never
-      if ComponentVariation.DM_VariationKind = eVariation_NotFitted then
-      begin
-        Result := False;
-      end;
-    end
-    else
-    begin
-      if pos('@', _CurrComponent) <> 0 then
-      begin
-        Result := False;
-      end
-      else
-      begin
-        Result := True;
-      end;
-    end;
-  end;
-end;
+{.....................................................................................................................}
+{.                                               Workspace Interaction                                               .}
+{.....................................................................................................................}
 
-function GetSeparator(Dummy: Integer): String;
-var
-  Separator: TString;
-begin
-  case FieldSeparatorIndex of
-    0:
-      Separator := ',';
-    1:
-      Separator := ';';
-    2:
-      Separator := ' ';
-    3:
-      Separator := #9;
-    // else
-  end;
 
-  Result := Separator;
-end;
-
-Function LALALALA(Ext: String): String;
+Function GetBoard: IPCB_Board;
+Var
+  Board: IPCB_Board; // document board object
+  Document: IServerDocument;
+  pcbDocPath: TString;
+  flagRequirePcbDocFile: Boolean;
 Begin
-  If TargetFolder = '' Then
-    TargetFolder := CurrProject.DM_GetOutputPath;
-  If TargetFileName = '' Then
-    TargetFileName := CurrProject.DM_ProjectFileName;
-  Result := AddSlash(TargetFolder) + TargetPrefix + 'pcbdata.js';
-  // CurrString := StringReplace( CurrString, '<DATE>',    DateStr,    MkSet( rfReplaceAll, rfIgnoreCase ) );
+  // Make sure the current Workspace opens or else quit this script
+  CurrWorkSpace := GetWorkSpace;
+  If (CurrWorkSpace = Nil) Then
+    Exit;
+
+  // Make sure the currently focussed Project in this Workspace opens or else
+  // quit this script
+  CurrProject := CurrWorkSpace.DM_FocusedProject;
+  If CurrProject = Nil Then
+    Exit;
+
+  flagRequirePcbDocFile := True;
+
+  FindProjectPcbDocFile(CurrProject, flagRequirePcbDocFile, pcbDocPath);
+
+  // TODO: Close
+  Document := Client.OpenDocument('pcb', pcbDocPath);
+  Board := PCBServer.GetPCBBoardByPath(pcbDocPath);
+
+  If Not Assigned(Board) Then // check of active document
+  Begin
+    ShowMessage('The Current Document is not a PCB Document.');
+    Exit;
+  End;
+
+  Result := Board;  
 End;
+
+
+{.....................................................................................................................}
+{.                                              JSON String Conversions                                              .}
+{.....................................................................................................................}
 
 function JSONFloatToStr(v: Single): String;
 begin
   Result := StringReplace(FloatToStr(v), ',', '.',
     MkSet(rfReplaceAll, rfIgnoreCase));
+end;
+
+function JSONBoolToStr(v: Boolean): String;
+begin
+  if v then
+    Result := 'true'
+  else
+    Result := 'false';
+end;
+
+function JSONStrToStr(v: String): String;
+var
+  i: Integer;
+begin
+  Result := '"';
+  for i := 1 to Length(v) do
+  begin
+    case v[i] of
+      '"':
+        Result := Result + '\"';
+      '\':
+        Result := Result + '\\';
+      #$08:
+        Result := Result + '\b';
+      #$09:
+        Result := Result + '\t';
+      #$0a:
+        Result := Result + '\n';
+      #$0b:
+        Result := Result + '\v';
+      #$0c:
+        Result := Result + '\f';
+      #$0d:
+        Result := Result + '\r';
+      #$00 .. #$07, #$0e .. #$1f, #$7e .. #$7f:
+        begin
+          Result := Result + '\u' + IntToHex(Ord(v[i]), 4);
+        end;
+    else
+      Result := Result + '\u' + IntToHex(Ord(v[i]), 4);
+    end;
+  end;
+  Result := Result + '"';
 end;
 
 function GetCompFromComp(pcbc: IPCB_Component): IComponent;
@@ -229,7 +341,7 @@ begin
   Result := nil;
 end;
 
-function GetFlatDoc(Dummy: Integer): IDocument;
+function GetFlatDoc: IDocument;
 Begin
   FlattenedDoc := CurrProject.DM_DocumentFlattened;
 
@@ -247,7 +359,7 @@ Begin
   Result := FlattenedDoc;
 end;
 
-procedure ListAllFields(Dummy: Integer);
+procedure ListAllFields;
 Var
   CompIndex: Integer; // An Index for pullin out components
   PhysCompCount: Integer; // A count of the number of components in document
@@ -279,7 +391,7 @@ Var
   ComponentVariation: IComponentVariation;
 
 Begin
-  FlattenedDoc := GetFlatDoc(0);
+  FlattenedDoc := GetFlatDoc();
 
   CompCount := FlattenedDoc.DM_ComponentCount;
 
@@ -331,7 +443,7 @@ Var
   ComponentVariation: IComponentVariation;
 
 Begin
-  FlattenedDoc := GetFlatDoc(0);
+  FlattenedDoc := GetFlatDoc();
 
   CompCount := FlattenedDoc.DM_ComponentCount;
 
@@ -348,93 +460,78 @@ Begin
   end;
 end;
 
-function JSONBoolToStr(v: Boolean): String;
-begin
-  if v then
-    Result := 'true'
-  else
-    Result := 'false';
-end;
 
-function JSONStrToStr(v: String): String;
+
+{.....................................................................................................................}
+{.                                            Generation Helper Functions                                            .}
+{.....................................................................................................................}
+
+
+{
+  ComponentIsFittedInCurrentVariant cross-checks the ComponentId and Designator
+  against the current project variant (an @ in the ComponentId indicates that
+  the component is part of a variant). Only components that are part of the
+  current variation (and don't have a DNP directive) are included in the
+  output.
+}
+Function ComponentIsFittedInCurrentVariant(ComponentId, Designator: TString;
+  _ProjectVariant: IProjectVariant): Boolean;
 var
-  i: Integer;
+  // Designator: IPart;
+  ComponentVariation: IComponentVariation;
 begin
-  Result := '"';
-  for i := 1 to Length(v) do
+  // [!!!] UGLY
+  // Designator := ComponentId.DM_SubParts[0];
+  if _ProjectVariant = nil then
   begin
-    case v[i] of
-      '"':
-        Result := Result + '\"';
-      '\':
-        Result := Result + '\\';
-      #$08:
-        Result := Result + '\b';
-      #$09:
-        Result := Result + '\t';
-      #$0a:
-        Result := Result + '\n';
-      #$0b:
-        Result := Result + '\v';
-      #$0c:
-        Result := Result + '\f';
-      #$0d:
-        Result := Result + '\r';
-      #$00 .. #$07, #$0e .. #$1f, #$7e .. #$7f:
-        begin
-          Result := Result + '\u' + IntToHex(Ord(v[i]), 4);
-        end;
-    else
-      Result := Result + '\u' + IntToHex(Ord(v[i]), 4);
+    if pos('@', ComponentId) <> 0 then
+    begin
+      // Exclude components that are part of a variant but we're not inside a variant
+      Result := False;
+    end else begin
+      // Component is not part of a variant, and we're not inside a variant
+      Result := True;
     end;
   end;
-  Result := Result + '"';
-end;
 
-procedure GetParameters(_pcbBoard: TObject);
-var
-  stringList: TStringList;
-  argIterator: IPCB_BoardIterator;
-  pcbPrimitive: IPCB_Primitive;
-  pcb_primitiveparametersIntf: IPCB_PrimitiveParameters;
-  argIndex: Integer;
-  name: String;
-begin
-  stringList := TStringList.Create;
-  stringList.Sorted := True;
-  stringList.Duplicates := dupIgnore;
-  stringList.Add('[DesignItemID]');
-  stringList.Add('[Description]');
-  stringList.Add('[Comment]');
-  stringList.Add('[Footprint]');
-  argIterator := _pcbBoard.BoardIterator_Create();
-  argIterator.AddFilter_ObjectSet(MkSet(eComponentObject));
-
-  argIterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
-  argIterator.AddFilter_Method(eProcessAll);
-  pcbPrimitive := argIterator.FirstPCBObject();
-  while (pcbPrimitive <> nil) do
+  if _ProjectVariant <> nil then
   begin
-    pcb_primitiveparametersIntf := pcbPrimitive;
-    for argIndex := 0 to pcb_primitiveparametersIntf.Count() - 1 do
+    ComponentVariation := _ProjectVariant.DM_FindComponentVariationByDesignator
+      (Designator);
+    if ComponentVariation <> nil then
     begin
-      name := pcb_primitiveparametersIntf.GetParameterByIndex(argIndex)
-        .GetName();
-
+      if ComponentId <> ComponentVariation.DM_UniqueId + '@' +
+        _ProjectVariant.DM_Description then
       begin
-        stringList.Add(name);
+        // Exclude component that is part of another variant
+        Result := False;
+      end else begin
+        // Include component that is part of the current variant
+        Result := True;
+      end;
+      // [!!!] Never
+      if ComponentVariation.DM_VariationKind = eVariation_NotFitted then
+      begin
+        // In any case, exclude components that are not fitted
+        Result := False;
+      end;
+    end
+    else
+    begin
+      if pos('@', ComponentId) <> 0 then
+      begin
+        // Component has a variant-specific ID, but there is no variation defined for it.
+        // Possibly belongs to a different variant --> exclude it.
+        Result := False;
+      end else begin
+        // Component has no variant-specific ID, and no variation is defined --> include it.
+        Result := True;
       end;
     end;
-    pcbPrimitive := argIterator.NextPCBObject();
   end;
-  _pcbBoard.BoardIterator_Destroy(argIterator);
-
-  ValueParameterCb.Items.AddStrings(stringList);
-  ColumnsParametersClb.Items.AddStrings(stringList);
-  GroupParametersClb.Items.AddStrings(stringList);
 end;
 
-function getparamc(comp: IPCB_Component): Integer;
+function GetComponentParameters(comp: IPCB_Component): TStringList;
 var
   stateText: string;
   str1: string;
@@ -468,33 +565,11 @@ begin
   Result := paramsComponent;
 end;
 
-function getpurpur(Dummy: Integer): TStringList;
-var
-  s: TStringList;
-  i: Integer;
-begin
-  s := TStringList.Create;
 
-  for i := 0 to ColumnsParametersNames.Count - 1 do
-  begin
-    s.Add(ColumnsParametersNames[i]);
-  end;
-  Result := s;
-end;
+{.....................................................................................................................}
+{.                                               Native JSON Generation                                              .}
+{.....................................................................................................................}
 
-function getpurpur2(Dummy: Integer): TStringList;
-var
-  s: TStringList;
-  i: Integer;
-begin
-  s := TStringList.Create;
-
-  for i := 0 to GroupParametersNames.Count - 1 do
-  begin
-    s.Add(GroupParametersNames[i]);
-  end;
-  Result := s;
-end;
 
 function ParseArc(Board: IPCB_Board; Prim: TObject): String;
 var
@@ -1148,7 +1223,7 @@ begin
 end;
 
 function ParseComponent(Board: IPCB_Board; Component: TObject;
-  purpur, purpur2: TStringList; NoBOM: Boolean): String;
+  SelectedFields, SelectedGroupParameters: TStringList; NoBOM: Boolean): String;
 var
   PnPout: TStringList;
   Iterator: IPCB_BoardIterator;
@@ -1209,30 +1284,30 @@ begin
   PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
   PnPout.Add('"Footprint":' + JSONStrToStr(Component.Pattern) + ',');
 
-  sl := getparamc(Component);
+  sl := GetComponentParameters(Component);
 
   PnPout.Add('"PartNumber":' + JSONStrToStr
-    (sl.Values[ValueParameterName]) + ',');
+    (sl.Values[ValueParameterName]) + ','); // TODO: CopyPaste error?
   PnPout.Add('"Value":' + JSONStrToStr(sl.Values[ValueParameterName]) + ',');
 
   PnPout.Add('"Fields":' + '[');
 
-  for hhhhi := 0 to purpur.Count - 1 do
+  for hhhhi := 0 to SelectedFields.Count - 1 do
   begin
     if (hhhhi > 0) then
       PnPout.Add(',');
-    hhhh := purpur[hhhhi];
+    hhhh := SelectedFields[hhhhi];
     PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
   end;
   PnPout.Add('],');
 
   PnPout.Add('"Group":' + '[');
 
-  for hhhhi := 0 to purpur2.Count - 1 do
+  for hhhhi := 0 to SelectedGroupParameters.Count - 1 do
   begin
     if (hhhhi > 0) then
       PnPout.Add(',');
-    hhhh := purpur2[hhhhi];
+    hhhh := SelectedGroupParameters[hhhhi];
     PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
   end;
   PnPout.Add('],');
@@ -1274,7 +1349,7 @@ begin
   PnPout.Free;
 end;
 
-function PickAndPlaceOutputEx(Dummy: Boolean): String;
+function PickAndPlaceOutputNative(OutputJS: Boolean): String;
 var
   Board: IPCB_Board; // document board object
   Component: IPCB_Component; // component object
@@ -1302,8 +1377,8 @@ var
   _Document: IServerDocument;
   // sl: TStringList;
   tmpx, tmpy: String;
-  purpur: TStringList;
-  purpur2: TStringList;
+  SelectedFields: TStringList;
+  SelectedGroupParameters: TStringList;
   hhhhi: Integer;
   hhhh: String;
   StartTime, StopTime: TDateTime;
@@ -1337,22 +1412,20 @@ Begin
 
   StartTime := Now();
 
-  GetParameters(Board);
-
-  purpur := getpurpur(0);
-  purpur2 := getpurpur2(0);
+  SelectedFields := GetSelectedFields();
+  SelectedGroupParameters := GetSelectedGroupParameters();
 
   Iterator := Board.BoardIterator_Create;
   Iterator.AddFilter_ObjectSet(MkSet(eComponentObject));
   Iterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
   Iterator.AddFilter_Method(eProcessAll);
 
-  Separator := GetSeparator(0);
+  Separator := GetSeparator();
   Count := 0;
   PnPout := TStringList.Create;
   Component := Iterator.FirstPCBObject;
 
-  if (Dummy) then
+  if (OutputJS) then
   begin
     PnPout.Add('var altiumbom = ');
   end;
@@ -1372,7 +1445,7 @@ Begin
     end;
 
     // Print Pick&Place data of SMD components to file
-    if UseItEx(Component.SourceUniqueId, Component.SourceDesignator,
+    if ComponentIsFittedInCurrentVariant(Component.SourceUniqueId, Component.SourceDesignator,
       ProjectVariant) then
       if (LayerFilterIndex = 0) or
         ((LayerFilterCb = 1) and (Component.Layer = eTopLayer)) or
@@ -1382,7 +1455,7 @@ Begin
         If (Count > 1) Then
           PnPout.Add(',');
 
-        PnPout.Add(ParseComponent(Board, Component, purpur, purpur2, NoBOM));
+        PnPout.Add(ParseComponent(Board, Component, SelectedFields, SelectedGroupParameters, NoBOM));
       End;
     Component := Iterator.NextPCBObject;
   End;
@@ -1542,11 +1615,11 @@ Begin
 
   PnPout.Add('"Fields":' + '[');
 
-  for hhhhi := 0 to purpur.Count - 1 do
+  for hhhhi := 0 to SelectedFields.Count - 1 do
   begin
     if (hhhhi > 0) then
       PnPout.Add(',');
-    hhhh := purpur[hhhhi];
+    hhhh := SelectedFields[hhhhi];
     PnPout.Add(JSONStrToStr(hhhh));
   end;
   PnPout.Add(']');
@@ -1554,7 +1627,7 @@ Begin
   PnPout.Add('}');
   PnPout.Add('}');
 
-  if (Dummy) then
+  if (OutputJS) then
   begin
     PnPout.Add(';');
   end;
@@ -1575,7 +1648,13 @@ Begin
   // ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
 End;
 
-function ParseArcNative(Board: IPCB_Board; Prim: TObject): String;
+
+{.....................................................................................................................}
+{.                                              Generic JSON Generation                                              .}
+{.....................................................................................................................}
+
+
+function ParseArcGeneric(Board: IPCB_Board; Prim: TObject): String;
 var
   PnPout: TStringList;
   EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
@@ -1605,7 +1684,7 @@ begin
   PnPout.Free;
 end;
 
-function ParseTrackNative(Board: IPCB_Board; Prim: TObject;
+function ParseTrackGeneric(Board: IPCB_Board; Prim: TObject;
   NoType: Boolean): String;
 var
   PnPout: TStringList;
@@ -1634,7 +1713,7 @@ begin
   PnPout.Free;
 end;
 
-function ParseVIANative(Board: IPCB_Board; Prim: TObject;
+function ParseVIAGeneric(Board: IPCB_Board; Prim: TObject;
   NoType: Boolean): String;
 var
   PnPout: TStringList;
@@ -1694,8 +1773,8 @@ begin
   PnPout.Free;
 end;
 
-function ParseComponentNative(Board: IPCB_Board; Component: TObject;
-  purpur, purpur2: TStringList; NoBOM: Boolean): String;
+function ParseComponentGeneric(Board: IPCB_Board; Component: TObject;
+  SelectedFields, SelectedGroupParameters: TStringList; NoBOM: Boolean): String;
 var
   PnPout: TStringList;
   Iterator: IPCB_BoardIterator;
@@ -1762,7 +1841,7 @@ begin
 
   (*
 
-    sl := getparamc(Component);
+    sl := GetComponentParameters(Component);
 
     PnPout.Add('"PartNumber":' + JSONStrToStr
     (sl.Values[ValueParameterName]) + ',');
@@ -1770,22 +1849,22 @@ begin
 
     PnPout.Add('"Fields":' + '[');
 
-    for hhhhi := 0 to purpur.Count - 1 do
+    for hhhhi := 0 to SelectedFields.Count - 1 do
     begin
     if (hhhhi > 0) then
     PnPout.Add(',');
-    hhhh := purpur[hhhhi];
+    hhhh := SelectedFields[hhhhi];
     PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
     end;
     PnPout.Add('],');
 
     PnPout.Add('"Group":' + '[');
 
-    for hhhhi := 0 to purpur2.Count - 1 do
+    for hhhhi := 0 to SelectedGroupParameters.Count - 1 do
     begin
     if (hhhhi > 0) then
     PnPout.Add(',');
-    hhhh := purpur2[hhhhi];
+    hhhh := SelectedGroupParameters[hhhhi];
     PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
     end;
     PnPout.Add('],');
@@ -1798,7 +1877,7 @@ begin
   PnPout.Free;
 end;
 
-function ParsePadNative(Board: IPCB_Board; Prim, Pad: TObject): String;
+function ParsePadGeneric(Board: IPCB_Board; Prim, Pad: TObject): String;
 var
   PnPout: TStringList;
   // Layer, Net: String;
@@ -1965,6 +2044,8 @@ begin
   PadType := 'smd';
 
   PnPout.Add('"layers":' + PadLayer + ',');
+  if PadPin1 then
+    PnPout.Add('"pin1":1,');
   PnPout.Add('"pos":' + '[' + PadX + ', ' + PadY + ']' + ',');
   PnPout.Add('"size":' + '[' + PadWidth + ', ' + PadHeight + ']' + ',');
   PnPout.Add('"angle":' + PadAngle + ',');
@@ -1987,7 +2068,6 @@ begin
     PnPout.Add('"Width":' + (PadWidth) + ',');
     PnPout.Add('"Height":' + (PadHeight) + ',');
     PnPout.Add('"Angle":' + (PadAngle) + ',');
-    PnPout.Add('"Pin1":' + JSONBoolToStr(PadPin1) + ',');
     PnPout.Add('"Net":' + JSONStrToStr(Net));
   *)
 
@@ -1996,8 +2076,8 @@ begin
   PnPout.Free;
 end;
 
-function ParseFootprintNative(Board: IPCB_Board; Component: TObject;
-  purpur, purpur2: TStringList; NoBOM: Boolean): String;
+function ParseFootprintGeneric(Board: IPCB_Board; Component: TObject;
+  SelectedFields, SelectedGroupParameters: TStringList; NoBOM: Boolean): String;
 var
   PnPout: TStringList;
   Iterator: IPCB_BoardIterator;
@@ -2068,7 +2148,7 @@ begin
     PnPout.Add('"Designator":' + JSONStrToStr(Component.SourceDesignator) + ',');
     PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
 
-    sl := getparamc(Component);
+    sl := GetComponentParameters(Component);
 
     PnPout.Add('"PartNumber":' + JSONStrToStr
     (sl.Values[ValueParameterName]) + ',');
@@ -2094,7 +2174,7 @@ begin
     If (PadsCount > 1) Then
       PnPout.Add(',');
 
-    PnPout.Add(ParsePadNative(Board, Prim, Pad));
+    PnPout.Add(ParsePadGeneric(Board, Prim, Pad));
 
     // pads :=pads.concat(parsePad(Prim));
     // if (isSMD and (Prim.Layer = eMultiLayer)) then begin
@@ -2113,7 +2193,7 @@ begin
   PnPout.Free;
 end;
 
-function ParseRegionNative(Board: IPCB_Board; Prim: TObject;
+function ParseRegionGeneric(Board: IPCB_Board; Prim: TObject;
   NoType: Boolean): String;
 var
   PnPout: TStringList;
@@ -2201,7 +2281,7 @@ begin
   PnPout.Free;
 end;
 
-function ParsePolyNative(Board: IPCB_Board; Prim: TObject;
+function ParsePolyGeneric(Board: IPCB_Board; Prim: TObject;
   NoType: Boolean): String;
 var
   PnPout: TStringList;
@@ -2285,7 +2365,7 @@ begin
   PnPout.Free;
 end;
 
-function PickAndPlaceOutputExNative(Dummy: Boolean): String;
+function PickAndPlaceOutputGeneric: String;
 var
   Board: IPCB_Board; // document board object
   Component: IPCB_Component; // component object
@@ -2314,8 +2394,8 @@ var
   _Document: IServerDocument;
   // sl: TStringList;
   tmpx, tmpy: String;
-  purpur: TStringList;
-  purpur2: TStringList;
+  SelectedFields: TStringList;
+  SelectedGroupParameters: TStringList;
   hhhhi: Integer;
   hhhh: String;
   StartTime, StopTime: TDateTime;
@@ -2359,17 +2439,15 @@ Begin
 
   StartTime := Now();
 
-  GetParameters(Board);
-
-  purpur := getpurpur(0);
-  purpur2 := getpurpur2(0);
+  SelectedFields := GetSelectedFields();
+  SelectedGroupParameters := GetSelectedGroupParameters();
 
   Iterator := Board.BoardIterator_Create;
   Iterator.AddFilter_ObjectSet(MkSet(eComponentObject));
   Iterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
   Iterator.AddFilter_Method(eProcessAll);
 
-  Separator := GetSeparator(0);
+  Separator := GetSeparator();
   Count := 0;
   PnPout := TStringList.Create;
   Component := Iterator.FirstPCBObject;
@@ -2386,7 +2464,7 @@ Begin
     end;
 
     // Print Pick&Place data of SMD components to file
-    if UseItEx(Component.SourceUniqueId, Component.SourceDesignator,
+    if ComponentIsFittedInCurrentVariant(Component.SourceUniqueId, Component.SourceDesignator,
       ProjectVariant) then
       if (LayerFilterIndex = 0) or
         ((LayerFilterCb = 1) and (Component.Layer = eTopLayer)) or
@@ -2399,12 +2477,12 @@ Begin
           Footprints := Footprints + ','; // PnPout.Add(',');
         end;
 
-        Components := Components + ParseComponentNative(Board, Component,
-          purpur, purpur2, NoBOM);
-        Footprints := Footprints + ParseFootprintNative(Board, Component,
-          purpur, purpur2, NoBOM);
+        Components := Components + ParseComponentGeneric(Board, Component,
+          SelectedFields, SelectedGroupParameters, NoBOM);
+        Footprints := Footprints + ParseFootprintGeneric(Board, Component,
+          SelectedFields, SelectedGroupParameters, NoBOM);
 
-        // PnPout.Add(ParseComponent(Board, Component, purpur, purpur2, NoBOM));
+        // PnPout.Add(ParseComponent(Board, Component, SelectedFields, SelectedGroupParameters, NoBOM));
       End;
     Component := Iterator.NextPCBObject;
   End;
@@ -2431,11 +2509,11 @@ Begin
     case (Prim.ObjectId) of
       eArcObject:
         begin
-          Edges := Edges + ParseArcNative(Board, Prim);
+          Edges := Edges + ParseArcGeneric(Board, Prim);
         end;
       eTrackObject:
         begin
-          Edges := Edges + ParseTrackNative(Board, Prim, False);
+          Edges := Edges + ParseTrackGeneric(Board, Prim, False);
         end;
     end;
 
@@ -2546,25 +2624,25 @@ Begin
           begin
             if Length(SilkscreenF) > 0 then
               SilkscreenF := SilkscreenF + ', ';
-            SilkscreenF := SilkscreenF + ParseTrackNative(Board, Prim, False);
+            SilkscreenF := SilkscreenF + ParseTrackGeneric(Board, Prim, False);
           end;
           If (Prim.Layer = eBottomOverlay) Then
           begin
             if Length(SilkscreenB) > 0 then
               SilkscreenB := SilkscreenB + ', ';
-            SilkscreenB := SilkscreenB + ParseTrackNative(Board, Prim, False);
+            SilkscreenB := SilkscreenB + ParseTrackGeneric(Board, Prim, False);
           end;
           If (Prim.Layer = eTopLayer) Then
           begin
             if Length(TracksF) > 0 then
               TracksF := TracksF + ', ';
-            TracksF := TracksF + ParseTrackNative(Board, Prim, True);
+            TracksF := TracksF + ParseTrackGeneric(Board, Prim, True);
           end;
           If (Prim.Layer = eBottomLayer) Then
           begin
             if Length(TracksB) > 0 then
               TracksB := TracksB + ', ';
-            TracksB := TracksB + ParseTrackNative(Board, Prim, True);
+            TracksB := TracksB + ParseTrackGeneric(Board, Prim, True);
           end;
         end;
       eViaObject:
@@ -2574,14 +2652,14 @@ Begin
           begin
             if Length(TracksF) > 0 then
               TracksF := TracksF + ', ';
-            TracksF := TracksF + ParseVIANative(Board, Prim, True);
+            TracksF := TracksF + ParseVIAGeneric(Board, Prim, True);
           end;
 
           // If (Prim.Layer = eBottomLayer) Then
           begin
             if Length(TracksB) > 0 then
               TracksB := TracksB + ', ';
-            TracksB := TracksB + ParseVIANative(Board, Prim, True);
+            TracksB := TracksB + ParseVIAGeneric(Board, Prim, True);
           end;
         end;
       eRegionObject:
@@ -2590,25 +2668,25 @@ Begin
           begin
             if Length(SilkscreenF) > 0 then
               SilkscreenF := SilkscreenF + ', ';
-            SilkscreenF := SilkscreenF + ParseRegionNative(Board, Prim, False);
+            SilkscreenF := SilkscreenF + ParseRegionGeneric(Board, Prim, False);
           end;
           If (Prim.Layer = eBottomOverlay) Then
           begin
             if Length(SilkscreenB) > 0 then
               SilkscreenB := SilkscreenB + ', ';
-            SilkscreenB := SilkscreenB + ParseRegionNative(Board, Prim, False);
+            SilkscreenB := SilkscreenB + ParseRegionGeneric(Board, Prim, False);
           end;
           If (Prim.Layer = eTopLayer) Then
           begin
             if Length(ZonesF) > 0 then
               ZonesF := ZonesF + ', ';
-            ZonesF := ZonesF + ParseRegionNative(Board, Prim, True);
+            ZonesF := ZonesF + ParseRegionGeneric(Board, Prim, True);
           end;
           If (Prim.Layer = eBottomLayer) Then
           begin
             if Length(ZonesB) > 0 then
               ZonesB := ZonesB + ', ';
-            ZonesB := ZonesB + ParseRegionNative(Board, Prim, True);
+            ZonesB := ZonesB + ParseRegionGeneric(Board, Prim, True);
           end;
         end;
       ePolyObject:
@@ -2617,25 +2695,25 @@ Begin
           begin
             if Length(SilkscreenF) > 0 then
               SilkscreenF := SilkscreenF + ', ';
-            SilkscreenF := SilkscreenF + ParsePolyNative(Board, Prim, False);
+            SilkscreenF := SilkscreenF + ParsePolyGeneric(Board, Prim, False);
           end;
           If (Prim.Layer = eBottomOverlay) Then
           begin
             if Length(SilkscreenB) > 0 then
               SilkscreenB := SilkscreenB + ', ';
-            SilkscreenB := SilkscreenB + ParsePolyNative(Board, Prim, False);
+            SilkscreenB := SilkscreenB + ParsePolyGeneric(Board, Prim, False);
           end;
           If (Prim.Layer = eTopLayer) Then
           begin
             if Length(ZonesF) > 0 then
               ZonesF := ZonesF + ', ';
-            ZonesF := ZonesF + ParsePolyNative(Board, Prim, True);
+            ZonesF := ZonesF + ParsePolyGeneric(Board, Prim, True);
           end;
           If (Prim.Layer = eBottomLayer) Then
           begin
             if Length(ZonesB) > 0 then
               ZonesB := ZonesB + ', ';
-            ZonesB := ZonesB + ParsePolyNative(Board, Prim, True);
+            ZonesB := ZonesB + ParsePolyGeneric(Board, Prim, True);
           end;
         end;
     end;
@@ -2661,11 +2739,11 @@ Begin
 
     PnPout.Add('"Fields":' + '[');
 
-    for hhhhi := 0 to purpur.Count - 1 do
+    for hhhhi := 0 to SelectedFields.Count - 1 do
     begin
     if (hhhhi > 0) then
     PnPout.Add(',');
-    hhhh := purpur[hhhhi];
+    hhhh := SelectedFields[hhhhi];
     PnPout.Add(JSONStrToStr(hhhh));
     end;
     PnPout.Add(']');
@@ -2731,77 +2809,9 @@ Begin
   // ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
 End;
 
-function GenerConf(Dummy: Integer): String;
-var
-  PnPout: TStringList;
-  s: TStringList;
-  i: Integer;
-Begin
-  PnPout := TStringList.Create;
-
-  PnPout.Add('var config = {');
-  PnPout.Add('"show_fabrication":' + JSONBoolToStr(FabLayer) + ',');
-  PnPout.Add('"redraw_on_drag":' + JSONBoolToStr(True) + ',');
-  PnPout.Add('"highlight_pin1":' + JSONBoolToStr(Highlighting1Pin) + ',');
-  PnPout.Add('"offset_back_rotation":' + JSONBoolToStr(False) + ',');
-  PnPout.Add('"kicad_text_formatting":' + JSONBoolToStr(True) + ',');
-  PnPout.Add('"dark_mode":' + JSONBoolToStr(DarkMode) + ',');
-  PnPout.Add('"bom_view":' + JSONStrToStr('left-right') + ',');
-  PnPout.Add('"board_rotation":' + JSONStrToStr('0.0') + ',');
-  PnPout.Add('"checkboxes":' + JSONStrToStr('Sourced,Placed') + ',');
-  PnPout.Add('"show_silkscreen":' + JSONBoolToStr(True) + ',');
-  PnPout.Add('"fields":' + '[');
-
-  s := getpurpur(0);
-  for i := 0 to s.Count - 1 do
-  begin
-    if i > 0 then
-      PnPout.Add(',');
-
-    PnPout.Add(JSONStrToStr(s[i]));
-  end;
-
-  PnPout.Add(']' + ',');
-  PnPout.Add('"show_pads":' + JSONBoolToStr(True) + ',');
-  PnPout.Add('"layer_view":' + JSONStrToStr('FB') + ',');
-  PnPout.Add('};');
-
-  Result := PnPout.Text;
-
-  PnPout.Free;
-end;
-
-function GetWDFileName(FF: String): String;
-var
-  i: Integer;
-  Path: String;
-  CurrentDir: String;
-  Document: IDocument;
-begin
-  Result := FF;
-  if not IsPathRelative(FF) then
-    Exit;
-
-  Result := ExpandFileName(FF);
-
-  for i := 0 to CurrProject.DM_LogicalDocumentCount - 1 do
-  begin
-    Document := CurrProject.DM_LogicalDocuments(i);
-    if Document.DM_FileName <> 'InteractiveHTMLBOM4Altium2.pas' then
-      continue;
-
-    Path := ExtractFilePath(Document.DM_FullPath);
-    if not DirectoryExists(Path) then
-      continue;
-
-    CurrentDir := GetCurrentDir;
-    if not SetCurrentDir(Path) then
-      continue;
-
-    Result := ExpandFileName(FF);
-    SetCurrentDir(CurrentDir);
-  end;
-end;
+{.....................................................................................................................}
+{.                                              Generic JSON Generation                                              .}
+{.....................................................................................................................}
 
 function StringLoadFromFile(FileName: String): String;
 var
@@ -2837,16 +2847,24 @@ begin
   // Result := StringReplace(a, '///'+'SPLITJS', e, MkSet(rfReplaceAll,rfIgnoreCase));
 end;
 
-procedure Gener(pcbdata, config: String);
+
+{.....................................................................................................................}
+{.                                               Output File Generation                                              .}
+{.....................................................................................................................}
+
+
+procedure GenerateHTML(pcbdata);
 var
   s: TStringList;
   Data: String;
 begin
+  // Load template into Data variable
   s := TStringList.Create;
   s.LoadFromFile(GetWDFileName('web\ibom.html'));
   Data := s.Text;
   s.Free;
 
+  // Replace template sections with contents of files and/or content from the PCB board
   Data := ReplaceEx(Data, 'CSS', GetWDFileName('web\ibom.css'));
   Data := ReplaceEx(Data, 'USERCSS',
     GetWDFileName('web\user-file-examples\user.css'));
@@ -2854,7 +2872,7 @@ begin
   Data := ReplaceEx(Data, 'LZ-STRING', GetWDFileName('web\lz-string.js'));
   Data := ReplaceEx(Data, 'POINTER_EVENTS_POLYFILL',
     GetWDFileName('web\pep.js'));
-  Data := ReplaceEx2(Data, 'CONFIG', config);
+  Data := ReplaceEx2(Data, 'CONFIG', GenerateNativeConfig());
   Data := ReplaceEx2(Data, 'PCBDATA', pcbdata + #13#10 +
     StringLoadFromFile(GetWDFileName('altium-pcbdata.js')));
   Data := ReplaceEx(Data, 'UTILJS', GetWDFileName('web\util.js'));
@@ -2869,13 +2887,56 @@ begin
   Data := ReplaceEx(Data, 'USERFOOTER',
     GetWDFileName('web\user-file-examples\userfooter.html'));
 
+  // Save the manipulated HTML to the output file
   s := TStringList.Create;
   s.Text := Data;
   s.SaveToFile(GetOutputFileNameWithExtension('.html'));
   s.Free;
 end;
 
-procedure Gener2(pcbdata, config: String);
+
+function GenerateNativeConfig: String;
+var
+  PnPout: TStringList;
+  s: TStringList;
+  i: Integer;
+Begin
+  PnPout := TStringList.Create;
+
+  PnPout.Add('var config = {');
+  PnPout.Add('"show_fabrication":' + JSONBoolToStr(FabLayer) + ',');
+  PnPout.Add('"redraw_on_drag":' + JSONBoolToStr(True) + ',');
+  PnPout.Add('"highlight_pin1":' + JSONBoolToStr(Highlighting1Pin) + ',');
+  PnPout.Add('"offset_back_rotation":' + JSONBoolToStr(False) + ',');
+  PnPout.Add('"kicad_text_formatting":' + JSONBoolToStr(True) + ',');
+  PnPout.Add('"dark_mode":' + JSONBoolToStr(DarkMode) + ',');
+  PnPout.Add('"bom_view":' + JSONStrToStr('left-right') + ',');
+  PnPout.Add('"board_rotation":' + JSONStrToStr('0.0') + ',');
+  PnPout.Add('"checkboxes":' + JSONStrToStr('Sourced,Placed') + ',');
+  PnPout.Add('"show_silkscreen":' + JSONBoolToStr(True) + ',');
+  PnPout.Add('"fields":' + '[');
+
+  s := GetSelectedFields();
+  for i := 0 to s.Count - 1 do
+  begin
+    if i > 0 then
+      PnPout.Add(',');
+
+    PnPout.Add(JSONStrToStr(s[i]));
+  end;
+
+  PnPout.Add(']' + ',');
+  PnPout.Add('"show_pads":' + JSONBoolToStr(True) + ',');
+  PnPout.Add('"layer_view":' + JSONStrToStr('FB') + ',');
+  PnPout.Add('};');
+
+  Result := PnPout.Text;
+
+  PnPout.Free;
+end;
+
+
+procedure DumpAsJS(pcbdata);
 var
   s: TStringList;
   Data: String;
@@ -2886,7 +2947,7 @@ begin
   s.Free;
 end;
 
-procedure Gener3(pcbdata, config: String);
+procedure DumpAsJSON(pcbdata);
 var
   s: TStringList;
   Data: String;
@@ -2897,7 +2958,52 @@ begin
   s.Free;
 end;
 
-procedure SetupProjectVariant(Dummy: Integer);
+{.....................................................................................................................}
+{.                                                   State Handling                                                  .}
+{.....................................................................................................................}
+
+Procedure Initialize;
+Begin
+  // Open Workspace, Project, Get Variants, etc.
+  InitializeProject();
+End;
+
+Procedure InitializeProject;
+Var
+  ProjVarIndex: Integer; // Index for iterating through variants
+Begin
+  // Make sure the current Workspace opens or else quit this script
+  CurrWorkSpace := GetWorkSpace;
+  If (CurrWorkSpace = Nil) Then
+    Exit;
+
+  // Make sure the currently focussed Project in this Workspace opens or else
+  // quit this script
+  CurrProject := CurrWorkSpace.DM_FocusedProject;
+  If CurrProject = Nil Then
+    Exit;
+
+  // [!!!]
+  SetupProjectVariant();
+  {
+    // Determine how many Assembly Variants are defined within this focussed Project
+    ProjectVariantCount := CurrProject.DM_ProjectVariantCount;
+
+    // Process each Project Assembly Variant sequentially
+    For ProjVarIndex := 0 To ProjectVariantCount - 1 Do
+    Begin
+    // Fetch the currently indexed project Assembly Variant
+    ProjectVariant := CurrProject.DM_ProjectVariants[ ProjVarIndex ];
+    VariantsComboBox.Items.Add( ProjectVariant.DM_Description );
+    End;
+
+    // Choose first variant to start with
+    VariantsComboBox.ItemIndex := 0;
+    ProjectVariant := CurrProject.DM_ProjectVariants[ 0 ];
+  }
+End;
+
+procedure SetupProjectVariant;
 Var
   ProjVarIndex: Integer; // Index for iterating through variants
   TempVariant: IProjectVariant; // A temporary Handle for a ProjectVariant
@@ -2921,100 +3027,10 @@ Begin
   }
 End;
 
-Function UseIt(_CurrComponent: IComponent;
-  _ProjectVariant: IProjectVariant): Boolean;
-var
-  _CurrPart: IPart;
-  ComponentVariation: IComponentVariation;
-begin
-  // [!!!] UGLY
-  _CurrPart := _CurrComponent.DM_SubParts[0];
-  if _ProjectVariant = nil then
-  begin
-    if pos('@', _CurrComponent.DM_UniqueId) <> 0 then
-    begin
-      Result := False;
-    end
-    else
-    begin
-      Result := True;
-    end;
-  end;
-
-  if _ProjectVariant <> nil then
-  begin
-    ComponentVariation := _ProjectVariant.DM_FindComponentVariationByDesignator
-      (_CurrPart.DM_PhysicalDesignator);
-    if ComponentVariation <> nil then
-    begin
-      if _CurrComponent.DM_UniqueId <> ComponentVariation.DM_UniqueId + '@' +
-        _ProjectVariant.DM_Description then
-      begin
-        Result := False;
-      end
-      else
-      begin
-        Result := True;
-      end;
-      // [!!!] Never
-      if ComponentVariation.DM_VariationKind = eVariation_NotFitted then
-      begin
-        Result := False;
-      end;
-    end
-    else
-    begin
-      if pos('@', _CurrComponent.DM_UniqueId) <> 0 then
-      begin
-        Result := False;
-      end
-      else
-      begin
-        Result := True;
-      end;
-    end;
-  end;
-end;
-
-Procedure InitializeProject(Dummy: Integer);
-Var
-  ProjVarIndex: Integer; // Index for iterating through variants
-Begin
-  // Make sure the current Workspace opens or else quit this script
-  CurrWorkSpace := GetWorkSpace;
-  If (CurrWorkSpace = Nil) Then
-    Exit;
-
-  // Make sure the currently focussed Project in this Workspace opens or else
-  // quit this script
-  CurrProject := CurrWorkSpace.DM_FocusedProject;
-  If CurrProject = Nil Then
-    Exit;
-
-  // [!!!]
-  SetupProjectVariant(0);
-  {
-    // Determine how many Assembly Variants are defined within this focussed Project
-    ProjectVariantCount := CurrProject.DM_ProjectVariantCount;
-
-    // Process each Project Assembly Variant sequentially
-    For ProjVarIndex := 0 To ProjectVariantCount - 1 Do
-    Begin
-    // Fetch the currently indexed project Assembly Variant
-    ProjectVariant := CurrProject.DM_ProjectVariants[ ProjVarIndex ];
-    VariantsComboBox.Items.Add( ProjectVariant.DM_Description );
-    End;
-
-    // Choose first variant to start with
-    VariantsComboBox.ItemIndex := 0;
-    ProjectVariant := CurrProject.DM_ProjectVariants[ 0 ];
-
-    // Based on current settings on the form, re-write the description of what
-    // action will be done when the OK button is pressed
-    ReWriteActionLabel( 0 ); }
-End;
-
-procedure SetState_Controls(Dummy: Integer);
+{
+ Transfers the global state variables into the Form object values
+}
+procedure SetState_Controls;
 var
   i: Integer;
   tmpn: String;
@@ -3056,11 +3072,19 @@ Begin
   }
 End;
 
+{
+  "State" is the values in the global variables, defined at the top.
+  At the very first call to Configure, `Paramters` is empty, thus the defaults
+  defined here come into effect. Otherwise, we overwrite each default value
+  with what we find in the Paramters list.
+}
 Procedure SetState_FromParameters(AParametersList: String);
 Var
   s: String;
 Begin
-  InitializeProject(0);
+  InitializeProject();
+
+  // Defaults definition
   {
     UseParameters        := False;
     UseVariants          := False;
@@ -3094,6 +3118,7 @@ Begin
   GroupParametersNames.Add('Value');
   GroupParametersNames.Add('[Footprint]');
 
+  // Overwrite defaults (if values are provided in Parameter list)
   {
     If GetState_Parameter(AParametersList, 'ParameterName'       , S) Then ParameterName        := S;
     If GetState_Parameter(AParametersList, 'VariantName'         , S) Then VariantName          := S;
@@ -3135,10 +3160,14 @@ Begin
   If GetState_Parameter(AParametersList, 'GroupParametersNames', s) Then
     GroupParametersNames.DelimitedText := s;
 
-  SetState_Controls(0);
+  // Transfer global variable state into Form objects
+  SetState_Controls();
 End;
 
-procedure GetState_Controls(Dummy: Integer);
+{
+ Transfers the Form object values into the global state variables
+}
+procedure GetState_Controls;
 var
   i: Integer;
 Begin
@@ -3173,9 +3202,9 @@ Begin
   /// ////////////////////////////////////////////
 End;
 
-Function GetState_FromParameters(Dummy: Integer): String;
+Function GetState_FromParameters: String;
 Begin
-  GetState_Controls(0);
+  GetState_Controls();
 
   Result := '';
   { Result := Result +       'ParameterName='        + ParameterName;
@@ -3211,154 +3240,211 @@ begin
   s.Free;
 end;
 
-function GetPluginExecutableFileName(Dummy: Integer): String;
-var
-  i: Integer;
-  Path: String;
-  CurrentDir: String;
-  Document: IDocument;
-begin
-  Result := PluginExecutable;
-  if not IsPathRelative(PluginExecutable) then
-    Exit;
 
-  Result := ExpandFileName(PluginExecutable);
+{.....................................................................................................................}
+{.                                                OutputJob Interface                                                .}
+{.....................................................................................................................}
 
-  for i := 0 to CurrProject.DM_LogicalDocumentCount - 1 do
-  begin
-    Document := CurrProject.DM_LogicalDocuments(i);
-    if Document.DM_FileName <> 'GOSTBOMAltium.pas' then
-      continue;
 
-    Path := ExtractFilePath(Document.DM_FullPath);
-    if not DirectoryExists(Path) then
-      continue;
-
-    CurrentDir := GetCurrentDir;
-    if not SetCurrentDir(Path) then
-      continue;
-
-    Result := ExpandFileName(PluginExecutable);
-    SetCurrentDir(CurrentDir);
-  end;
-end;
-
-procedure Generate(Parameters: String);
-var
-  f2, f5, tmp, cfg: String;
-begin
-  SetState_FromParameters(Parameters);
-
-  if FormatIndex = 0 then
-  begin
-    tmp := PickAndPlaceOutputEx(FormatIndex < 2);
-    cfg := GenerConf(0);
-    Gener(tmp, cfg);
-  end
-  else if FormatIndex = 1 then
-  begin
-    tmp := PickAndPlaceOutputEx(FormatIndex < 2);
-    Gener2(tmp, cfg);
-  end
-  else if FormatIndex = 2 then
-  begin
-    tmp := PickAndPlaceOutputEx(FormatIndex < 2);
-    Gener3(tmp, cfg);
-  end
-  else
-  begin
-    tmp := PickAndPlaceOutputExNative(FormatIndex < 2);
-    Gener3(tmp, cfg);
-  end;
-
-  f2 := GetOutputFileNameWithExtension('.csv');
-  f5 := GetPluginExecutableFileName(0);
-end;
-
+{
+  PredictOutputFileNames should return the full path names of all files that
+  will be generated by the Generate procedure, without actually generating
+  them. The file names should be returned via the Result string, separated by
+  '|' characters.
+}
 Function PredictOutputFileNames(Parameters: String): String;
 Var
   OutputFileNames: TStringList;
-  f1, f2, f3: string;
 Begin
+  // Populate the global state variables from the Parameters string
   SetState_FromParameters(Parameters);
+
   OutputFileNames := TStringList.Create;
   OutputFileNames.Delimiter := '|';
   OutputFileNames.StrictDelimiter := True;
-  OutputFileNames.Add(GetOutputFileNameWithExtension('.pdf'));
+
+  If FormatIndex = 0 Then
+  Begin
+    OutputFileNames.Add(GetOutputFileNameWithExtension('.html'));
+  End Else If FormatIndex = 1 Then Begin
+    OutputFileNames.Add(GetOutputFileNameWithExtension('.js'));
+  End Else If FormatIndex = 2 Then Begin
+    OutputFileNames.Add(GetOutputFileNameWithExtension('.json'));
+  End Else If FormatIndex = 3 Then Begin
+    OutputFileNames.Add(GetOutputFileNameWithExtension('.json'));
+  End Else Begin
+    OutputFileNames.Add(GetOutputFileNameWithExtension('.unknown_format_choice'));
+  End;
+
   Result := OutputFileNames.DelimitedText;
   OutputFileNames.Free;
 End;
 
-function foobar(Dummy: Integer): Integer;
-var
-  Board: IPCB_Board; // document board object
-  Component: IPCB_Component; // component object
-  Iterator: IPCB_BoardIterator;
-  ComponentIterator: IPCB_GroupIterator;
-  Pad: IPCB_Pad;
-  SMDcomponent: Boolean;
-  BoardUnits: String;
-  // Current unit string mm/mils
-  PnPout: TStringList;
-  Count: Integer;
-  FileName: TString;
-  Document: IServerDocument;
-  x, Y, Rotation, Layer, Net: TString;
-  pcbDocPath: TString;
-  flagRequirePcbDocFile: Boolean;
-  Separator: TString;
-  Iter, Prim: TObject;
-  PadsCount: Integer;
-  PadLayer, PadType: String;
-  PadX, PadY, PadAngle: TString;
-  X1, Y1, X2, Y2, _W, _H: Single;
-  Width, Height: String;
-  PadWidth, PadHeight, PadPin1: String;
-  PadShape, PadDrillShape: String;
-  PadDrillWidth, PadDrillHeight: String;
-  EdgeType: String;
-  EdgeWidth, EdgeHeight, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
-  ccc: IComponent;
-  xxx: String;
-  CurrParm: IParameter;
-  NoBOM: Boolean;
-  k: Integer;
-  CI1, CO1: TObject;
-  contour: IPCB_Contour;
-  kk: Integer;
-
-  _Document: IServerDocument;
+{
+  Configure is the entry point for the right-click Configure command in an
+  OutJob document. It shows the form with the supplied settings (encoded as a
+  parameter string), and, if the user clicks OK, it returns the new settings.
+  These new settings will be saved by OutJob, and applied in subsequent
+  invocations of the Generate procedure.
+}
+Function Configure(Parameters: String): String;
 Begin
-  // Make sure the current Workspace opens or else quit this script
-  CurrWorkSpace := GetWorkSpace;
-  If (CurrWorkSpace = Nil) Then
-    Exit;
-
-  // Make sure the currently focussed Project in this Workspace opens or else
-  // quit this script
-  CurrProject := CurrWorkSpace.DM_FocusedProject;
-  If CurrProject = Nil Then
-    Exit;
-
-  flagRequirePcbDocFile := True;
-
-  FindProjectPcbDocFile(CurrProject, flagRequirePcbDocFile,
-    { var } pcbDocPath);
-
-  // TODO: Close
-  _Document := Client.OpenDocument('pcb', pcbDocPath);
-  Board := PCBServer.GetPCBBoardByPath(pcbDocPath);
-
-  If Not Assigned(Board) Then // check of active document
+  Result := '';
+  Initialize;
+  SetState_FromParameters(Parameters);
+  RunAsOutputJob := True;
+  If MainFrm.ShowModal = mrOK Then
   Begin
-    ShowMessage('The Current Document is not a PCB Document.');
-    Exit;
+    Result := GetState_FromParameters();
+    Close;
   End;
+End;
 
-  GetParameters(Board);
+{
+  Generate is the entry point when running a Script Output from an OutJob document.
+  It generates an output file(s) without showing the form. The settings to use are
+  supplied from OutJob as a parameter string (whose format we can define).
+}
+Procedure Generate(Parameters: String);
+Var
+  config, jsString, jsonString: String;
+  generateJS: Boolean;
+Begin
+  SetState_FromParameters(Parameters);
+
+  generateJS := (FormatIndex < 2);
+
+  If FormatIndex = 0 Then
+  Begin
+    // Generate HTML file
+    jsString := PickAndPlaceOutputNative(generateJS);
+    GenerateHTML(jsString);
+  End Else If FormatIndex = 1 Then Begin
+    // Generate JSON in JavaScript file
+    jsString := PickAndPlaceOutputNative(generateJS);
+    DumpAsJS(jsString);
+  End Else If FormatIndex = 2 Then Begin
+    // Generate native JSON file
+    jsonString := PickAndPlaceOutputNative(generateJS);
+    DumpAsJSON(jsonString);
+  End Else Begin
+    // Generate generic JSON file, according to
+    // https://github.com/openscopeproject/InteractiveHtmlBom/blob/master/InteractiveHtmlBom/ecad/schema/genericjsonpcbdata_v1.schema
+    jsonString := PickAndPlaceOutputGeneric();
+    DumpAsJSON(jsonString);
+  End;
+End;
+
+
+{.....................................................................................................................}
+{.                                                     Form Events                                                   .}
+{.....................................................................................................................}
+
+
+{
+  OnFormShow is called when the form is shown, regardless if the form is shown
+  by the OutJob via the Configure procedure, or directly opened by the Altium
+  script engine.
+}
+procedure TMainFrm.OnFormShow(Sender: TObject);
+begin
+  If RunAsOutputJob Then
+  Begin
+    // Configure does the initialization for us
+    OKBtn.Caption := 'Save Config';
+  End Else Begin
+    // This is our entry point if the form is opened directly.
+    Initialize;
+    PopulateChoiceFields();
+    SetState_FromParameters('');
+    SetState_Controls;
+    OKBtn.Caption := 'Generate';
+  End;
 end;
 
-procedure LoadParameterNames(Dummy: Integer);
+Procedure TMainFrm.OKBtnClick(Sender: TObject);
+Begin
+  If RunAsOutputJob Then
+  Begin
+    ModalResult := mrOK;
+  End Else Begin
+    Generate(GetState_FromParameters());
+    Close;
+  End;
+End;
+
+Procedure TMainFrm.CancelBtnClick(Sender: TObject);
+Begin
+  If RunAsOutputJob Then
+  Begin
+    ModalResult := mrCancel;
+  End Else Begin
+    Close;
+  End;
+End;
+
+
+{.....................................................................................................................}
+{.                                                  Form Interaction                                                 .}
+{.....................................................................................................................}
+
+
+procedure PopulateChoiceFields;
+Var
+  Board: IPCB_Board; // document board object
+Begin
+  PopulateStaticFields();
+
+  Board := GetBoard();
+  PopulateDynamicFields(Board);
+End;
+
+procedure PopulateDynamicFields(Board: IPCB_Board);
+var
+  stringList: TStringList;
+  argIterator: IPCB_BoardIterator;
+  pcbPrimitive: IPCB_Primitive;
+  pcb_primitiveparametersIntf: IPCB_PrimitiveParameters;
+  argIndex: Integer;
+  name: String;
+begin
+  stringList := TStringList.Create;
+  stringList.Sorted := True;
+  stringList.Duplicates := dupIgnore;
+  stringList.Add('[DesignItemID]');
+  stringList.Add('[Description]');
+  stringList.Add('[Comment]');
+  stringList.Add('[Footprint]');
+  argIterator := Board.BoardIterator_Create();
+  argIterator.AddFilter_ObjectSet(MkSet(eComponentObject));
+
+  argIterator.AddFilter_IPCB_LayerSet(LayerSet.AllLayers);
+  argIterator.AddFilter_Method(eProcessAll);
+  pcbPrimitive := argIterator.FirstPCBObject();
+  while (pcbPrimitive <> nil) do
+  begin
+    pcb_primitiveparametersIntf := pcbPrimitive;
+    for argIndex := 0 to pcb_primitiveparametersIntf.Count() - 1 do
+    begin
+      name := pcb_primitiveparametersIntf.GetParameterByIndex(argIndex)
+        .GetName();
+
+      begin
+        stringList.Add(name);
+      end;
+    end;
+    pcbPrimitive := argIterator.NextPCBObject();
+  end;
+  Board.BoardIterator_Destroy(argIterator);
+
+  ValueParameterCb.Items.AddStrings(stringList);
+  ColumnsParametersClb.Items.AddStrings(stringList);
+  GroupParametersClb.Items.AddStrings(stringList);
+end;
+
+procedure PopulateStaticFields;
+Var
+  Board: IPCB_Board; // document board object
 Begin
   LayerFilterCb.Items.Add('Both');
   LayerFilterCb.Items.Add('Top');
@@ -3368,47 +3454,33 @@ Begin
   FormatCb.Items.Add('JS');
   FormatCb.Items.Add('JSON');
   FormatCb.Items.Add('JSON Generic');
-
-  foobar(0);
 End;
 
-procedure Initialize;
+function GetSelectedFields: TStringList;
+var
+  s: TStringList;
+  i: Integer;
 begin
-  // Open Workspace, Project, Get Variants, etc.
-  InitializeProject(0);
+  s := TStringList.Create;
 
-  // Add Parameters to Parameters ComboBox
-  LoadParameterNames(0);
-
-  // Based on current settings on the form, re-write the description of what
-  // action will be done when the OK button is pressed
-  // ReWriteActionLabel( 0 );
+  for i := 0 to ColumnsParametersNames.Count - 1 do
+  begin
+    s.Add(ColumnsParametersNames[i]);
+  end;
+  Result := s;
 end;
 
-Function Configure(Parameters: String): String;
-Begin
-  Result := '';
-  Initialize;
-  SetState_FromParameters(Parameters);
-  If MainFrm.ShowModal = mrOK Then
-  Begin
-    Result := GetState_FromParameters(0);
-    Close;
-  End;
-End;
-
-procedure TMainFrm.OKBtnClick(Sender: TObject);
+function GetSelectedGroupParameters: TStringList;
+var
+  s: TStringList;
+  i: Integer;
 begin
-  ModalResult := mrOK;
+  s := TStringList.Create;
+
+  for i := 0 to GroupParametersNames.Count - 1 do
+  begin
+    s.Add(GroupParametersNames[i]);
+  end;
+  Result := s;
 end;
 
-procedure TMainFrm.CancelBtnClick(Sender: TObject);
-begin
-  ModalResult := mrCancel;
-end;
-
-procedure RunGUI;
-begin
-  // MEM_AllowUnder.Text := TEXTBOXINIT;
-  MainFrm.ShowModal;
-end;

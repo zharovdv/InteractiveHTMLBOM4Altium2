@@ -1,7 +1,7 @@
 object MainFrm: TMainFrm
   Left = 0
   Top = 0
-  Caption = 'InteractiveHTMLBOM'
+  Caption = 'InteractiveHTMLBOM4Altium'
   ClientHeight = 416
   ClientWidth = 426
   Color = clBtnFace
@@ -11,6 +11,7 @@ object MainFrm: TMainFrm
   Font.Name = 'Tahoma'
   Font.Style = []
   OldCreateOrder = False
+  OnShow = OnFormShow
   PixelsPerInch = 96
   TextHeight = 13
   object Label2: TLabel
@@ -51,9 +52,9 @@ object MainFrm: TMainFrm
   object Label6: TLabel
     Left = 16
     Top = 232
-    Width = 98
+    Width = 142
     Height = 13
-    Caption = 'Columns parameters'
+    Caption = 'Component Fields as Columns'
   end
   object Label7: TLabel
     Left = 224
@@ -65,9 +66,9 @@ object MainFrm: TMainFrm
   object Label8: TLabel
     Left = 16
     Top = 208
-    Width = 79
+    Width = 98
     Height = 13
-    Caption = 'Value parameter'
+    Caption = 'Override '#39'Value'#39' with'
   end
   object Panel1: TPanel
     Left = 0
@@ -126,7 +127,7 @@ object MainFrm: TMainFrm
     TabOrder = 3
   end
   object LayerFilterCb: TComboBox
-    Left = 104
+    Left = 120
     Top = 136
     Width = 145
     Height = 21
@@ -134,7 +135,7 @@ object MainFrm: TMainFrm
     TabOrder = 4
   end
   object FormatCb: TComboBox
-    Left = 104
+    Left = 120
     Top = 168
     Width = 145
     Height = 21
@@ -179,7 +180,7 @@ object MainFrm: TMainFrm
     TabOrder = 10
   end
   object ValueParameterCb: TComboBox
-    Left = 104
+    Left = 120
     Top = 200
     Width = 145
     Height = 21
