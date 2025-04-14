@@ -742,7 +742,7 @@ var
   X1, Y1, X2, Y2, _W, _H: Single;
   Width, Height: String;
 
-  sl: TStringList;
+  Parameters: TStringList;
   hhhhi: Integer;
   hhhh: String;
 begin
@@ -782,12 +782,14 @@ begin
     bbox['center'] :=[(x0 + bbox.size[0] / 2).round(), -(y0 + bbox.size[1] / 2).round()];
   }
 
+  Parameters := GetComponentParameters(Component);
+
   PnPout.Add('{');
-  PnPout.Add('"attr":' + JSONStrToStr(Layer) + ',');
+  PnPout.Add('"attr":' + JSONStrToStr('') + ',');
   PnPout.Add('"footprint":' + JSONStrToStr(Component.Pattern) + ',');
   PnPout.Add('"layer":' + JSONStrToStr(Layer) + ',');
   PnPout.Add('"ref":' + JSONStrToStr(Component.SourceDesignator) + ',');
-  PnPout.Add('"val":' + JSONStrToStr(Layer) + ',');
+  PnPout.Add('"val":' + JSONStrToStr(Parameters.Values[ValueParameterName]) + ',');
   PnPout.Add('"extra_fields":' + '{}');
 
   // attr? extra_fields?
