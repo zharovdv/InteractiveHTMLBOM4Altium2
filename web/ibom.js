@@ -314,7 +314,7 @@ function entryMatches(entry) {
     return entry.toLowerCase().indexOf(filter) >= 0;
   }
   // check refs
-  if (!settings.hiddenColumns.includes("references")) {
+  if (!settings.hiddenColumns.includes("References")) {
     for (var ref of entry) {
       if (ref[0].toLowerCase().indexOf(filter) >= 0) {
         return true;
@@ -360,6 +360,35 @@ function highlightFilter(s) {
     pos += parts[i].length;
   }
   return r;
+}
+
+function getBomListByLayer(layer) {
+  switch (layer) {
+    case 'F': return pcbdata.bom.F.slice();
+    case 'B': return pcbdata.bom.B.slice();
+    case 'FB': return pcbdata.bom.both.slice();
+  }
+  return [];
+}
+
+function getSelectedBomList() {
+  if (settings.bommode == "netlist") {
+    return pcbdata.nets.slice();
+  }
+  var out = getBomListByLayer(settings.canvaslayout);
+
+  if (settings.bommode == "ungrouped") {
+    // expand bom table
+    var expandedTable = [];
+    for (var bomentry of out) {
+      for (var ref of bomentry) {
+        expandedTable.push([ref]);
+      }
+    }
+    return expandedTable;
+  }
+
+  return out;
 }
 
 function checkboxSetUnsetAllHandler(checkboxname) {
@@ -574,7 +603,7 @@ function populateBomHeader(placeHolderColumn = null, placeHolderElements = null)
         tr.appendChild(createColumnHeader("References", "references", (a, b) => {
           var i = 0;
           while (i < a.length && i < b.length) {
-            if (a[i] != b[i]) return compareRefs(a[i][0], b[i][0]);
+            if (a[i][0] != b[i][0]) return compareRefs(a[i][0], b[i][0]);
             i++;
           }
           return a.length - b.length;
@@ -619,31 +648,9 @@ function populateBomBody(placeholderColumn = null, placeHolderElements = null) {
   var first = true;
   var style = getComputedStyle(topmostdiv);
   var defaultNetColor = style.getPropertyValue('--track-color').trim();
-  if (settings.bommode == "netlist") {
-    bomtable = pcbdata.nets.slice();
-  } else {
-    switch (settings.canvaslayout) {
-      case 'F':
-        bomtable = pcbdata.bom.F.slice();
-        break;
-      case 'FB':
-        bomtable = pcbdata.bom.both.slice();
-        break;
-      case 'B':
-        bomtable = pcbdata.bom.B.slice();
-        break;
-    }
-    if (settings.bommode == "ungrouped") {
-      // expand bom table
-      expandedTable = []
-      for (var bomentry of bomtable) {
-        for (var ref of bomentry) {
-          expandedTable.push([ref]);
-        }
-      }
-      bomtable = expandedTable;
-    }
-  }
+
+  bomtable = getSelectedBomList();
+
   if (bomSortFunction) {
     bomtable = bomtable.sort(bomSortFunction);
   }
@@ -1294,10 +1301,10 @@ function topToggle() {
 }
 
 window.onload = function (e) {
-  initUtils();
   initRender();
   initStorage();
   initDefaults();
+  initUtils();
   cleanGutters();
   populateMetadata();
   dbgdiv = document.getElementById("dbg");
