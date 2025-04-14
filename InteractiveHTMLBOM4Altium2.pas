@@ -40,7 +40,7 @@ var
   BaseFullDir: String;
 
 procedure SetupProjectVariant(Dummy: Integer); forward;
-function GetBoard(Dummy: Integer): IPCB_Board; forward;
+function GetBoard(RequirePcbDocFile: Boolean;): IPCB_Board; forward;
 function GenerateNativeConfig(Dummy: Integer): String; forward;
 function GenerateAltiumConfig(Dummy: Integer): String; forward;
 procedure PopulateChoiceFields(Dummy: Integer); forward;
@@ -78,12 +78,45 @@ end;
 { .                                            Path and Filename Handling                                             . }
 { ..................................................................................................................... }
 
+{
+  In: 'C:\Path\to\file.txt'
+  Out: 'file'
+}
+function GetFileNameWithoutExtension(const APath: String): String;
+var
+  FileName, NameOnly: String;
+  DotPos: Integer;
+begin
+  // Extract the file name (with extension)
+  FileName := ExtractFileName(APath);
+
+  // Find the last dot in the file name
+  DotPos := LastDelimiter('.', FileName);
+
+  // Remove the extension if a dot was found (not at position 1)
+  if (DotPos > 0) then
+    NameOnly := Copy(FileName, 1, DotPos - 1)
+  else
+    NameOnly := FileName;
+
+  Result := NameOnly;
+end;
+
+
 Function GetOutputFileNameWithExtension(Ext: String): String;
 Begin
   If TargetFolder = '' Then
     TargetFolder := CurrProject.DM_GetOutputPath;
-  If TargetFileName = '' Then
-    TargetFileName := CurrProject.DM_ProjectFileName;
+  If (TargetFileName = '') or (TargetFileName = '.PrjPcb') then
+  begin
+    // Predict filename similar to Altium-native outputs, if no explicit filename requested.
+    if GetBoard(False) = nil then
+      TargetFileName := 'iBOM for (Cannot Find Board)'
+    else if ProjectVariant <> nil then
+      TargetFileName := 'iBOM for ' + GetFileNameWithoutExtension(GetBoard(True).FileName) + '(' + ProjectVariant.DM_Description + ')'
+    else
+      TargetFileName := 'iBOM for ' + GetFileNameWithoutExtension(GetBoard(True).FileName);
+  end;
   Result := AddSlash(TargetFolder) + TargetPrefix +
     ChangeFileExt(TargetFileName, Ext);
   // CurrString := StringReplace( CurrString, '<DATE>',    DateStr,    MkSet( rfReplaceAll, rfIgnoreCase ) );
@@ -98,12 +131,6 @@ begin
   Result := BaseFullDir + '\' + FF;
 end;
 
-// TODO: Crash in Release Manager
-procedure MyAbort(Value: string);
-begin
-  // Empty
-end;
-
 { ***************************************************************************
   * function FindProjectPcbDocFile()
   *  Find the PcbDoc file associated with this project.
@@ -113,7 +140,7 @@ end;
   *  Returns:  0 on success, 1 if not successful.
   *************************************************************************** }
 function FindProjectPcbDocFile(Project: IProject;
-  flagRequirePcbDocFile: Boolean; var pcbDocPath: TDynamicString;): Integer;
+  RequirePcbDocFile: Boolean; var pcbDocPath: TDynamicString;): Integer;
 var
   Document: IDocument;
   k: Integer;
@@ -155,31 +182,21 @@ begin
   begin
 
     { See if the user has requested operations that require a PcbDoc file. }
-    if (flagRequirePcbDocFile) then
+    if (RequirePcbDocFile) then
     begin
-      MyAbort('Found ' + IntToStr(numPcbDocs) +
+      ShowMessage('Found ' + IntToStr(numPcbDocs) +
         ' PcbDoc files in your project.  This number should have been exactly 1!');
-    end
-
-    { Else just issue a warning. }
-    else
-    begin
-      { Issue warning modal dialog box with specified warning message,
-        no reply after clicking Ok, and specified reply after clicking Cancel. }
-      IssueWarningWithOkOrCancel
-        ('Unable to find a PcbDoc file within this project.' + constLineBreak +
-        'However, since you have not requested operations that require a PcbDoc file, I will proceed to generate other OutJob outputs if you click OK.',
-        '', 'Aborting script at user request due to missing PcbDoc file ' +
-        constPcbVersionParm + '.');
-    end; { endelse }
+      Abort;
+    end; { endif }
 
   end; { endif }
 
   { Make sure there is no more than 1 PcbDoc file. }
   if (numPcbDocs > 1) then
   begin
-    MyAbort('Found ' + IntToStr(numPcbDocs) +
+    ShowMessage('Found ' + IntToStr(numPcbDocs) +
       ' PcbDoc files in your project.  This script currently only supports having 1 PcbDoc file per project!');
+    Abort;
   end;
 
   // ShowMessage('About to leave FindProjectPcbDocFile(), pcbDocPath is ' + pcbDocPath);
@@ -190,34 +207,39 @@ end; { end FindProjectPcbDocFile() }
 { .                                               Workspace Interaction                                               . }
 { ..................................................................................................................... }
 
-Function GetBoard(Dummy: Integer): IPCB_Board;
-Var
+function GetBoard(RequirePcbDocFile: Boolean;): IPCB_Board;
+var
   Board: IPCB_Board; // document board object
   Document: IServerDocument;
   pcbDocPath: TString;
-  flagRequirePcbDocFile: Boolean;
-Begin
+begin
+  Result := nil;
+
   // Make sure the current Workspace opens or else quit this script
   CurrWorkSpace := GetWorkSpace;
-  If (CurrWorkSpace = Nil) Then
+  if (CurrWorkSpace = nil) then
     Exit;
 
   // Make sure the currently focussed Project in this Workspace opens or else
   // quit this script
   CurrProject := CurrWorkSpace.DM_FocusedProject;
-  If CurrProject = Nil Then
+  if CurrProject = nil then
     Exit;
 
-  flagRequirePcbDocFile := True;
-
-  FindProjectPcbDocFile(CurrProject, flagRequirePcbDocFile, pcbDocPath);
+  FindProjectPcbDocFile(CurrProject, RequirePcbDocFile, pcbDocPath);
+  if (not RequirePcbDocFile) and (pcbDocPath = '') then
+  begin
+    // Early "abort" to prevent trying to call OpenDocument when no PcbDoc available
+    // Just return nil.
+    Exit;
+  end;
 
   // TODO: Close
   Document := Client.OpenDocument('pcb', pcbDocPath);
   Board := PCBServer.GetPCBBoardByPath(pcbDocPath);
 
-  If Not Assigned(Board) Then // check of active document
-  Begin
+  if Not Assigned(Board) then // check of active document
+  begin
     ShowMessage('The Current Document is not a PCB Document.');
     Exit;
   end;
@@ -1479,7 +1501,7 @@ var
   Filename: TString;
   Document: IServerDocument;
   pcbDocPath: TString;
-  flagRequirePcbDocFile: Boolean;
+  RequirePcbDocFile: Boolean;
   Separator: TString;
   Iter, Prim: TObject;
   PadsCount: Integer;
@@ -1525,10 +1547,9 @@ Begin
   If CurrProject = Nil Then
     Exit;
 
-  flagRequirePcbDocFile := True;
+  RequirePcbDocFile := True;
 
-  FindProjectPcbDocFile(CurrProject, flagRequirePcbDocFile,
-    { var } pcbDocPath);
+  FindProjectPcbDocFile(CurrProject, RequirePcbDocFile, pcbDocPath);
 
   // TODO: Close
   _Document := Client.OpenDocument('pcb', pcbDocPath);
@@ -2803,7 +2824,7 @@ Var
 begin
   PopulateStaticFields(0);
 
-  Board := GetBoard(0);
+  Board := GetBoard(True);
   PopulateDynamicFields(Board);
 end;
 
