@@ -1,6 +1,11 @@
 const
   constKindPcb = 'PCB';
 
+  epPredictOutputFileNames = 'epPredictOutputFileNames';
+  epConfigure = 'epConfigure';
+  epGenerate = 'epGenerate';
+  epRunGUI = 'epRunGUI';
+
   // GLOBAL VARIABLES SECTION
 Var
   CurrWorkSpace: IWorkSpace; // An Interface handle to the current workspace
@@ -30,7 +35,7 @@ Var
   ColumnsParametersNames: TStringList;
   GroupParametersNames: TStringList;
   Nets: TStringList;
-  RunAsOutputJob: Boolean;
+  EntryPoint: String;
 
 procedure SetupProjectVariant(Dummy: Integer); forward;
 function GetBoard(Dummy: Integer): IPCB_Board; forward;
@@ -110,7 +115,7 @@ Begin
   Result := AddSlash(TargetFolder) + TargetPrefix +
     ChangeFileExt(TargetFileName, Ext);
   // CurrString := StringReplace( CurrString, '<DATE>',    DateStr,    MkSet( rfReplaceAll, rfIgnoreCase ) );
-End;
+end;
 
 function GetWDFileName(FF: String): String;
 var
@@ -260,10 +265,10 @@ Begin
   Begin
     ShowMessage('The Current Document is not a PCB Document.');
     Exit;
-  End;
+  end;
 
   Result := Board;
-End;
+end;
 
 { ..................................................................................................................... }
 { .                                              JSON String Conversions                                              . }
@@ -367,7 +372,7 @@ Begin
 
     // Try Again to open the flattened document
     FlattenedDoc := CurrProject.DM_DocumentFlattened;
-  End;
+  end;
 
   Result := FlattenedDoc;
 end;
@@ -419,7 +424,7 @@ Begin
     Begin
       CurrParm := CurrComponent.DM_Parameters(ParmIndex);
       _pp.Add(CurrParm.DM_Name);
-    End;
+    end;
   end;
   _pp.Free;
 end;
@@ -1528,7 +1533,7 @@ Begin
   Begin
     ShowMessage('The Current Document is not a PCB Document.');
     Exit;
-  End;
+  end;
 
   StartTime := Now();
 
@@ -1587,9 +1592,9 @@ Begin
           SelectedFields, SelectedGroupParameters, NoBOM);
 
         // PnPout.Add(ParseComponent(Board, Component, SelectedFields, SelectedGroupParameters, NoBOM));
-      End;
+      end;
     Component := Iterator.NextPCBObject;
-  End;
+  end;
   Board.BoardIterator_Destroy(Iterator);
 
   // PnPout.Add('],');
@@ -1941,7 +1946,7 @@ Begin
   StopTime := Now();
   Elapsed := Trunc((StopTime - StartTime) * 86400 * 1000);
   // ShowMessage('Script execution complete in ' + IntToStr(Elapsed) + 'ms');
-End;
+end;
 
 { ..................................................................................................................... }
 { .                                              Generic JSON Generation                                              . }
@@ -2089,6 +2094,35 @@ begin
   s.Free;
 end;
 
+procedure GenerateIBOM(Dummy: Integer);
+var
+  tmp, cfg: String;
+begin
+  if FormatIndex = 0 then
+  begin
+    // Generate HTML file
+    tmp := 'var altiumbom = ' + PickAndPlaceOutputGeneric
+      (FormatIndex < 2) + ';';
+    cfg := GenerateNativeConfig(0);
+    GenerateHTML(tmp, cfg);
+  end
+  else if FormatIndex = 1 then
+  begin
+    // Generate JSON in JavaScript file
+    tmp := 'var altiumbom = ' + PickAndPlaceOutputGeneric
+      (FormatIndex < 2) + ';';
+    DumpAsJS(tmp);
+  end
+  else
+  begin
+    // Generate generic JSON file, according to
+    // https://github.com/openscopeproject/InteractiveHtmlBom/blob/master/InteractiveHtmlBom/ecad/schema/genericjsonpcbdata_v1.schema
+    tmp := PickAndPlaceOutputGeneric(FormatIndex < 2);
+    DumpAsJSON(tmp);
+  end;
+  // TODO: else assert
+end;
+
 { ..................................................................................................................... }
 { .                                                   State Handling                                                  . }
 { ..................................................................................................................... }
@@ -2099,7 +2133,7 @@ begin
   InitializeProject(0);
 
   // Add Parameters to Parameters ComboBox
-  //LoadParameterNames(0);
+  // LoadParameterNames(0);
 
   // Based on current settings on the form, re-write the description of what
   // action will be done when the OK button is pressed
@@ -2142,7 +2176,7 @@ Begin
     // Based on current settings on the form, re-write the description of what
     // action will be done when the OK button is pressed
     ReWriteActionLabel( 0 ); }
-End;
+end;
 
 procedure SetupProjectVariant(Dummy: Integer);
 Var
@@ -2166,7 +2200,7 @@ Begin
     Then ProjectVariant := CurrProject.DM_ProjectVariants[ ProjVarIndex ];
     End;
   }
-End;
+end;
 
 {
   Transfers the global state variables into the Form object values
@@ -2211,7 +2245,7 @@ Begin
     ParametersComboBox          .ItemIndex := ParametersComboBox.Items.IndexOf(ParameterName);
     VariantsComboBox            .ItemIndex := VariantsComboBox  .Items.IndexOf(VariantName);
   }
-End;
+end;
 
 {
   "State" is the values in the global variables, defined at the top.
@@ -2223,8 +2257,6 @@ Procedure SetState_FromParameters(AParametersList: String);
 Var
   s: String;
 Begin
-  InitializeProject(0);
-
   // Defaults definition
   {
     UseParameters        := False;
@@ -2300,10 +2332,7 @@ Begin
     ColumnsParametersNames.DelimitedText := s;
   If GetState_Parameter(AParametersList, 'GroupParametersNames', s) Then
     GroupParametersNames.DelimitedText := s;
-
-  // Transfer global variable state into Form objects
-  SetState_Controls(0);
-End;
+end;
 
 {
   Transfers the Form object values into the global state variables
@@ -2341,7 +2370,7 @@ Begin
       GroupParametersNames.Add(GroupParametersClb.Items[i]);
   end;
   /// ////////////////////////////////////////////
-End;
+end;
 
 Function GetState_FromParameters(Dummy: Integer): String;
 Begin
@@ -2370,7 +2399,7 @@ Begin
     ColumnsParametersNames.DelimitedText;
   Result := Result + '|' + 'GroupParametersNames=' +
     GroupParametersNames.DelimitedText;
-End;
+end;
 
 procedure CreateFile(F: string);
 var
@@ -2379,6 +2408,16 @@ begin
   s := TStringList.Create;
   s.SaveToFile(F);
   s.Free;
+end;
+
+procedure OnFormCreated(AEntryPoint, Parameters: String);
+begin
+  EntryPoint := AEntryPoint;
+
+  Initialize(0);
+  PopulateChoiceFields(0);
+  SetState_FromParameters(Parameters);
+  SetState_Controls(0);
 end;
 
 { ..................................................................................................................... }
@@ -2395,8 +2434,7 @@ Function PredictOutputFileNames(Parameters: String): String;
 Var
   OutputFileNames: TStringList;
 Begin
-  // Populate the global state variables from the Parameters string
-  SetState_FromParameters(Parameters);
+  OnFormCreated(epPredictOutputFileNames, Parameters);
 
   OutputFileNames := TStringList.Create;
   OutputFileNames.Delimiter := '|';
@@ -2405,20 +2443,20 @@ Begin
   If FormatIndex = 0 Then
   Begin
     OutputFileNames.Add(GetOutputFileNameWithExtension('.html'));
-  End
+  end
   Else If FormatIndex = 1 Then
   Begin
     OutputFileNames.Add(GetOutputFileNameWithExtension('.js'));
-  End
+  end
   Else
   Begin
     OutputFileNames.Add(GetOutputFileNameWithExtension('.json'));
-  End;
-  //TODO: else assert
+  end;
+  // TODO: else assert
 
   Result := OutputFileNames.DelimitedText;
   OutputFileNames.Free;
-End;
+end;
 
 {
   Configure is the entry point for the right-click Configure command in an
@@ -2429,16 +2467,14 @@ End;
 }
 Function Configure(Parameters: String): String;
 Begin
+  OnFormCreated(epConfigure, Parameters);
+
   Result := '';
-  Initialize(0);
-  SetState_FromParameters(Parameters);
-  RunAsOutputJob := True;
   If MainFrm.ShowModal = mrOK Then
   Begin
     Result := GetState_FromParameters(0);
-    Close;
-  End;
-End;
+  end;
+end;
 
 {
   Generate is the entry point when running a Script Output from an OutJob document.
@@ -2446,34 +2482,18 @@ End;
   supplied from OutJob as a parameter string (whose format we can define).
 }
 procedure Generate(Parameters: String);
-var
-  tmp, cfg: String;
 begin
-  SetState_FromParameters(Parameters);
+  OnFormCreated(epGenerate, Parameters);
 
-  if FormatIndex = 0 then
-  begin
-    // Generate HTML file
-    tmp := 'var altiumbom = ' + PickAndPlaceOutputGeneric
-      (FormatIndex < 2) + ';';
-    cfg := GenerateNativeConfig(0);
-    GenerateHTML(tmp, cfg);
-  end
-  else if FormatIndex = 1 then
-  begin
-    // Generate JSON in JavaScript file
-    tmp := 'var altiumbom = ' + PickAndPlaceOutputGeneric
-      (FormatIndex < 2) + ';';
-    DumpAsJS(tmp);
-  end
-  else
-  begin
-    // Generate generic JSON file, according to
-    // https://github.com/openscopeproject/InteractiveHtmlBom/blob/master/InteractiveHtmlBom/ecad/schema/genericjsonpcbdata_v1.schema
-    tmp := PickAndPlaceOutputGeneric(FormatIndex < 2);
-    DumpAsJSON(tmp);
-  end;
-  //TODO: else assert
+  GenerateIBOM(0);
+end;
+
+procedure RunGUI;
+begin
+  // MEM_AllowUnder.Text := TEXTBOXINIT;
+  OnFormCreated(epRunGUI, '');
+
+  MainFrm.ShowModal;
 end;
 
 { ..................................................................................................................... }
@@ -2487,46 +2507,26 @@ end;
 }
 procedure TMainFrm.OnFormShow(Sender: TObject);
 begin
-  If RunAsOutputJob Then
-  Begin
-    // Configure does the initialization for us
-    OKBtn.Caption := 'Save Config';
-  End
-  Else
-  Begin
+  if EntryPoint = epRunGUI then
+  begin
     // This is our entry point if the form is opened directly.
-    Initialize(0);
-    PopulateChoiceFields(0);
-    SetState_FromParameters('');
-    SetState_Controls(0);
     OKBtn.Caption := 'Generate';
-  End;
+  end;
 end;
 
-Procedure TMainFrm.OKBtnClick(Sender: TObject);
+procedure TMainFrm.OKBtnClick(Sender: TObject);
 Begin
-  If RunAsOutputJob Then
-  Begin
-    ModalResult := mrOK;
-  End
-  Else
-  Begin
-    Generate(GetState_FromParameters(0));
-    Close;
-  End;
-End;
+  if EntryPoint = epRunGUI then
+  begin
+    GenerateIBOM(0);
+  end;
+  ModalResult := mrOK;
+end;
 
-Procedure TMainFrm.CancelBtnClick(Sender: TObject);
-Begin
-  If RunAsOutputJob Then
-  Begin
-    ModalResult := mrCancel;
-  End
-  Else
-  Begin
-    Close;
-  End;
-End;
+procedure TMainFrm.CancelBtnClick(Sender: TObject);
+begin
+  ModalResult := mrCancel;
+end;
 
 { ..................................................................................................................... }
 { .                                                  Form Interaction                                                 . }
@@ -2535,12 +2535,12 @@ End;
 procedure PopulateChoiceFields(Dummy: Integer);
 Var
   Board: IPCB_Board; // document board object
-Begin
+begin
   PopulateStaticFields(0);
 
   Board := GetBoard(0);
   PopulateDynamicFields(Board);
-End;
+end;
 
 procedure PopulateDynamicFields(Board: IPCB_Board);
 var
@@ -2594,12 +2594,6 @@ Begin
   FormatCb.Items.Add('HTML');
   FormatCb.Items.Add('JS');
   FormatCb.Items.Add('JSON');
-End;
-
-procedure RunGUI;
-begin
-  // MEM_AllowUnder.Text := TEXTBOXINIT;
-  MainFrm.ShowModal;
 end;
 
 function GetSelectedFields(Dummy: Integer): TStringList;
