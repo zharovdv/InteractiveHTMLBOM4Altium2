@@ -121,7 +121,7 @@ function fromaltium(_data_) {
     result.tracks = _data_.pcbdata.tracks;
     result.zones = _data_.pcbdata.zones;
 
-    result.ibom_version = "v2.9.0";
+    result.ibom_version = "v2.10.0";
 
     return result;
 }
