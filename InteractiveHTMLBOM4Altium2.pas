@@ -1,13 +1,11 @@
 const
   constKindPcb = 'PCB';
-
   epPredictOutputFileNames = 'epPredictOutputFileNames';
   epConfigure = 'epConfigure';
   epGenerate = 'epGenerate';
   epRunGUI = 'epRunGUI';
 
-  // GLOBAL VARIABLES SECTION
-Var
+var
   CurrWorkSpace: IWorkSpace; // An Interface handle to the current workspace
   CurrProject: IProject; // An Interface handle to the current Project
   ProjectVariant: IProjectVariant; // An Interface handle to the current Variant
@@ -22,7 +20,6 @@ Var
   LayerFilterIndex: Integer;
   FormatIndex: Integer;
   FieldSeparatorIndex: Integer;
-  PluginExecutable: String;
   DarkMode: Boolean;
   AddNets: Boolean;
   AddTracks: Boolean;
@@ -36,16 +33,19 @@ Var
   GroupParametersNames: TStringList;
   Nets: TStringList;
   EntryPoint: String;
+  BaseFullDir: String;
 
 procedure SetupProjectVariant(Dummy: Integer); forward;
 function GetBoard(Dummy: Integer): IPCB_Board; forward;
 function GenerateNativeConfig(Dummy: Integer): String; forward;
+function GenerateAltiumConfig(Dummy: Integer): String; forward;
 procedure PopulateChoiceFields(Dummy: Integer); forward;
 procedure PopulateStaticFields(Dummy: Integer); forward;
 procedure PopulateDynamicFields(Board: IPCB_Board); forward;
 procedure InitializeProject(Dummy: Integer); forward;
 function GetSelectedFields(Dummy: Integer): TStringList; forward;
 function GetSelectedGroupParameters(Dummy: Integer): TStringList; forward;
+function GetState_FromParameters(Dummy: Integer): String; forward;
 
 { ..................................................................................................................... }
 { .                                              Global Variable Mapping                                              . }
@@ -74,38 +74,6 @@ end;
 { .                                            Path and Filename Handling                                             . }
 { ..................................................................................................................... }
 
-function GetPluginExecutableFileName(Dummy: Integer): String;
-var
-  i: Integer;
-  Path: String;
-  CurrentDir: String;
-  Document: IDocument;
-begin
-  Result := PluginExecutable;
-  if not IsPathRelative(PluginExecutable) then
-    Exit;
-
-  Result := ExpandFileName(PluginExecutable);
-
-  for i := 0 to CurrProject.DM_LogicalDocumentCount - 1 do
-  begin
-    Document := CurrProject.DM_LogicalDocuments(i);
-    if Document.DM_FileName <> 'GOSTBOMAltium.pas' then
-      continue;
-
-    Path := ExtractFilePath(Document.DM_FullPath);
-    if not DirectoryExists(Path) then
-      continue;
-
-    CurrentDir := GetCurrentDir;
-    if not SetCurrentDir(Path) then
-      continue;
-
-    Result := ExpandFileName(PluginExecutable);
-    SetCurrentDir(CurrentDir);
-  end;
-end;
-
 Function GetOutputFileNameWithExtension(Ext: String): String;
 Begin
   If TargetFolder = '' Then
@@ -118,35 +86,18 @@ Begin
 end;
 
 function GetWDFileName(FF: String): String;
-var
-  i: Integer;
-  Path: String;
-  CurrentDir: String;
-  Document: IDocument;
 begin
   Result := FF;
   if not IsPathRelative(FF) then
     Exit;
 
-  Result := ExpandFileName(FF);
+  Result := BaseFullDir + '\' + FF;
+end;
 
-  for i := 0 to CurrProject.DM_LogicalDocumentCount - 1 do
-  begin
-    Document := CurrProject.DM_LogicalDocuments(i);
-    if Document.DM_FileName <> 'InteractiveHTMLBOM4Altium2.pas' then
-      continue;
-
-    Path := ExtractFilePath(Document.DM_FullPath);
-    if not DirectoryExists(Path) then
-      continue;
-
-    CurrentDir := GetCurrentDir;
-    if not SetCurrentDir(Path) then
-      continue;
-
-    Result := ExpandFileName(FF);
-    SetCurrentDir(CurrentDir);
-  end;
+// TODO: Crash in Release Manager
+procedure MyAbort(Value: string);
+begin
+  // Empty
 end;
 
 { ***************************************************************************
@@ -560,7 +511,7 @@ var
   pcb_primitiveparametersIntf: IPCB_PrimitiveParameters;
   argIndex: Integer;
   parameterByIndex: IPCB_Parameter;
-  name, value: String;
+  name, Value: String;
 begin
   stateText := comp.GetState_Name().GetState_Text();
   str1 := comp.GetState_SourceCompDesignItemID();
@@ -579,8 +530,8 @@ begin
       parameterByIndex := pcb_primitiveparametersIntf.GetParameterByIndex
         (argIndex);
       name := parameterByIndex.GetName();
-      value := parameterByIndex.GetValue();
-      paramsComponent.Add(name + '=' + value);
+      Value := parameterByIndex.GetValue();
+      paramsComponent.Add(name + '=' + Value);
     end;
   end;
   Result := paramsComponent;
@@ -726,6 +677,19 @@ begin
   PnPout.Free;
 end;
 
+function ListIndexOf(s: TStringList; s2: String): Integer;
+var
+  i: Integer;
+begin
+  Result := -1;
+  for i := 0 to s.Count - 1 do
+    if s[i] = s2 then
+    begin
+      Result := i;
+      Exit;
+    end;
+end;
+
 function ParseComponentGeneric(Board: IPCB_Board; Component: TObject;
   SelectedFields, SelectedGroupParameters: TStringList; NoBOM: Boolean): String;
 var
@@ -743,8 +707,8 @@ var
   Width, Height: String;
 
   Parameters: TStringList;
-  hhhhi: Integer;
-  hhhh: String;
+  i, j: Integer;
+  Key: String;
 begin
   PnPout := TStringList.Create;
 
@@ -789,45 +753,60 @@ begin
   PnPout.Add('"footprint":' + JSONStrToStr(Component.Pattern) + ',');
   PnPout.Add('"layer":' + JSONStrToStr(Layer) + ',');
   PnPout.Add('"ref":' + JSONStrToStr(Component.SourceDesignator) + ',');
-  PnPout.Add('"val":' + JSONStrToStr(Parameters.Values[ValueParameterName]) + ',');
-  PnPout.Add('"extra_fields":' + '{}');
+  PnPout.Add('"val":' + JSONStrToStr(Parameters.Values
+    [ValueParameterName]) + ',');
+  PnPout.Add('"extra_fields": {');
+
+  j := 0;
+  for i := 0 to SelectedFields.Count - 1 do
+  begin
+    Key := SelectedFields[i];
+    if Key = ValueParameterName then
+      continue;
+    if Key = '[Footprint]' then
+      continue;
+
+    if (j > 0) then
+      PnPout.Add(',');
+    PnPout.Add('"' + Key + '":' + JSONStrToStr(Parameters.Values[Key]));
+    j := j + 1;
+  end;
+
+  for i := 0 to SelectedGroupParameters.Count - 1 do
+  begin
+    Key := SelectedGroupParameters[i];
+    if Key = ValueParameterName then
+      continue;
+    if Key = '[Footprint]' then
+      continue;
+
+    if SelectedFields.IndexOf(Key) = -1 then
+      continue;
+
+    //TODO: Strange hack
+    if ListIndexOf(SelectedFields, Key) = -1 then
+      continue;
+
+    if (j > 0) then
+      PnPout.Add(',');
+    PnPout.Add('"' + Key + '":' + JSONStrToStr(Parameters.Values[Key]));
+    j := j + 1;
+  end;
+
+  if (j > 0) then
+    PnPout.Add(',');
+  PnPout.Add('"NoBOM":' + JSONBoolToStr(NoBOM));
 
   // attr? extra_fields?
 
-  (*
+  // PnPout.Add('"PartNumber":' + JSONStrToStr
+  // (sl.Values[ValueParameterName]) + ',');
+  // PnPout.Add('"Value":' + JSONStrToStr(sl.Values[ValueParameterName]) + ',');
 
-    sl := GetComponentParameters(Component);
-
-    PnPout.Add('"PartNumber":' + JSONStrToStr
-    (sl.Values[ValueParameterName]) + ',');
-    PnPout.Add('"Value":' + JSONStrToStr(sl.Values[ValueParameterName]) + ',');
-
-    PnPout.Add('"Fields":' + '[');
-
-    for hhhhi := 0 to SelectedFields.Count - 1 do
-    begin
-    if (hhhhi > 0) then
-    PnPout.Add(',');
-    hhhh := SelectedFields[hhhhi];
-    PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
-    end;
-    PnPout.Add('],');
-
-    PnPout.Add('"Group":' + '[');
-
-    for hhhhi := 0 to SelectedGroupParameters.Count - 1 do
-    begin
-    if (hhhhi > 0) then
-    PnPout.Add(',');
-    hhhh := SelectedGroupParameters[hhhhi];
-    PnPout.Add(JSONStrToStr(sl.Values[hhhh]));
-    end;
-    PnPout.Add('],');
-
-    PnPout.Add('"NoBOM":' + JSONBoolToStr(NoBOM) + ',');
-
-  *)
   PnPout.Add('}');
+
+  PnPout.Add('}');
+
   Result := PnPout.Text;
   PnPout.Free;
 end;
@@ -1030,7 +1009,7 @@ begin
 end;
 
 function ParseFootprintGeneric(Board: IPCB_Board; Component: TObject;
-  SelectedFields, SelectedGroupParameters: TStringList; NoBOM: Boolean): String;
+  NoBOM: Boolean): String;
 var
   PnPout: TStringList;
   Iterator: IPCB_BoardIterator;
@@ -1453,14 +1432,34 @@ begin
   PnPout.Free;
 end;
 
-function ParseFontData: String;
+function ParseFontData(Dummy: Integer): String;
 var
   sl: TStringList;
+  Filename: string;
 begin
-  sl := TStringList.Create;
-  sl.LoadFromFile(GetWDFileName('altium-fontdata.js'));
-  Result := sl.Text;
-  sl.Free;
+  Filename := GetWDFileName('altium-fontdata.js');
+  if FileExists(Filename) then
+  begin
+    sl := TStringList.Create;
+    sl.LoadFromFile(Filename);
+    Result := sl.Text;
+    sl.Free;
+  end
+  else
+  begin
+    // NOTE: Split cause of long lines limitation
+    Result := '';
+    Result := Result +
+      '{"0":{"l":[[[0.428571,-1.047619],[0.52381,-1.047619],[0.619048,-1],[0.666667,-0.952381],[0.714286,-0.857143],[0.761905,-0.666667],[0.761905,-0.428571],[0.714286,-0.238095],[0.666667,-0.142857],[0.619048,-0.095238],[0.52381,-0.047619],[0.428571,-0.047619],[0.333333,-0.095238],[0.285714,-0.142857],[0.238095,-0.238095],[0.190476,-0.428571],[0.190476,-0.666667],[0.238095,-0.857143],[0.285714,-0.952381],[0.333333,-1],[0.428571,-1.047619]]],"w":0.952381},"1":{"l":[[[0.761905,-0.047619],[0.190476,-0.047619]],[[0.47619,-0.047619],[0.47619,-1.047619],[0.380952,-0.904762],[0.285714,-0.809524],[0.190476,-0.761905]]],"w":0.952381},"2":{"l":[[[0.190476,-0.952381],[0.238095,-1],[0.333333,-1.047619],[0.571429,-1.047619],[0.666667,-1],[0.714286,-0.952381],[0.761905,-0.857143],[0.761905,-0.761905],[0.714286,-0.619048],[0.142857,-0.047619],[0.761905,-0.047619]]],"w":0.952381},"3":{"l":[[[0.142857,-1.047619],[0.761905,-1.047619],[0.428571,-0.666667],[0.571429,-0.666667],[0.666667,-0.619048],[0.714286,-0.571429],[0.761905,-0.47619],[0.761905,-0.238095],[0.714286,-0.142857],[0.666667,-0.095238],[0.571429,-0.047619],[0.285714,-0.047619],[0.190476,-0.095238],[0.142857,-0.142857]]],"w":0.952381},"4":{"l":[[[0.666667,-0.714286],[0.666667,-0.047619]],[[0.428571,-1.095238],[0.190476,-0.380952],[0.809524,-0.380952]]],"w":0.952381},"5":{"l":[[[0.714286,-1.047619],[0.238095,-1.047619],[0.190476,-0.571429],[0.238095,-0.619048],[0.333333,-0.666667],[0.571429,-0.666667],[0.666667,-0.619048],[0.714286,-0.571429],[0.761905,-0.47619],[0.761905,-0.238095],[0.714286,-0.142857],[0.666667,-0.095238],[0.571429,-0.047619],[0.333333,-0.047619],[0.238095,-0.095238],[0.190476,-0.142857]]],"w":0.952381},"6":{"l":[[[0.666667,-1.047619],[0.47619,-1.047619],[0.380952,-1],[0.333333,-0.952381],[0.238095,-0.809524],[0.190476,-0.619048],[0.190476,-0.238095],[0.238095,-0.142857],[0.285714,-0.095238],[0.380952,-0.047619],[0.571429,-0.047619],[0.666667,-0.095238],[0.714286,-0.142857],[0.761905,-0.238095],[0.761905,-0.476';
+    Result := Result +
+      '19],[0.714286,-0.571429],[0.666667,-0.619048],[0.571429,-0.666667],[0.380952,-0.666667],[0.285714,-0.619048],[0.238095,-0.571429],[0.190476,-0.47619]]],"w":0.952381},"7":{"l":[[[0.142857,-1.047619],[0.809524,-1.047619],[0.380952,-0.047619]]],"w":0.952381},"8":{"l":[[[0.380952,-0.619048],[0.285714,-0.666667],[0.238095,-0.714286],[0.190476,-0.809524],[0.190476,-0.857143],[0.238095,-0.952381],[0.285714,-1],[0.380952,-1.047619],[0.571429,-1.047619],[0.666667,-1],[0.714286,-0.952381],[0.761905,-0.857143],[0.761905,-0.809524],[0.714286,-0.714286],[0.666667,-0.666667],[0.571429,-0.619048],[0.380952,-0.619048],[0.285714,-0.571429],[0.238095,-0.52381],[0.190476,-0.428571],[0.190476,-0.238095],[0.238095,-0.142857],[0.285714,-0.095238],[0.380952,-0.047619],[0.571429,-0.047619],[0.666667,-0.095238],[0.714286,-0.142857],[0.761905,-0.238095],[0.761905,-0.428571],[0.714286,-0.52381],[0.666667,-0.571429],[0.571429,-0.619048]]],"w":0.952381},"9":{"l":[[[0.285714,-0.047619],[0.47619,-0.047619],[0.571429,-0.095238],[0.619048,-0.142857],[0.714286,-0.285714],[0.761905,-0.47619],[0.761905,-0.857143],[0.714286,-0.952381],[0.666667,-1],[0.571429,-1.047619],[0.380952,-1.047619],[0.285714,-1],[0.238095,-0.952381],[0.190476,-0.857143],[0.190476,-0.619048],[0.238095,-0.52381],[0.285714,-0.47619],[0.380952,-0.428571],[0.571429,-0.428571],[0.666667,-0.47619],[0.714286,-0.52381],[0.761905,-0.619048]]],"w":0.952381},"V":{"l":[[[0.095238,-1.047619],[0.428571,-0.047619],[0.761905,-1.047619]]],"w":0.857143},"-":{"l":[[[0.238095,-0.428571],[1,-0.428571]]],"w":1.238095},",":{"l":[[[0.285714,-0.095238],[0.285714,-0.047619],[0.238095,0.047619],[0.190476,0.095238]]],"w":0.47619},"/":{"l":[[[0.952381,-1.095238],[0.095238,0.190476]]],"w":1.047619},".":{"l":[[[0.238095,-0.142857],[0.285714,-0.095238],[0.238095,-0.047619],[0.190476,-0.095238],[0.238095,-0.142857],[0.238095,-0.047619]]],"w":0.47619},"µ":{"l":[[[0.238095,-0.714286],[0.238095,0.285714]],[[0.714286,-0.190476],[0.761905,-0.095238],[0.857143,-0.';
+    Result := Result +
+      '047619]],[[0.238095,-0.190476],[0.285714,-0.095238],[0.380952,-0.047619],[0.571429,-0.047619],[0.666667,-0.095238],[0.714286,-0.190476],[0.714286,-0.714286]]],"w":1.047619},"A":{"l":[[[0.190476,-0.333333],[0.666667,-0.333333]],[[0.095238,-0.047619],[0.428571,-1.047619],[0.761905,-0.047619]]],"w":0.857143},"C":{"l":[[[0.809524,-0.142857],[0.761905,-0.095238],[0.619048,-0.047619],[0.52381,-0.047619],[0.380952,-0.095238],[0.285714,-0.190476],[0.238095,-0.285714],[0.190476,-0.47619],[0.190476,-0.619048],[0.238095,-0.809524],[0.285714,-0.904762],[0.380952,-1],[0.52381,-1.047619],[0.619048,-1.047619],[0.761905,-1],[0.809524,-0.952381]]],"w":1},"B":{"l":[[[0.571429,-0.571429],[0.714286,-0.52381],[0.761905,-0.47619],[0.809524,-0.380952],[0.809524,-0.238095],[0.761905,-0.142857],[0.714286,-0.095238],[0.619048,-0.047619],[0.238095,-0.047619],[0.238095,-1.047619],[0.571429,-1.047619],[0.666667,-1],[0.714286,-0.952381],[0.761905,-0.857143],[0.761905,-0.761905],[0.714286,-0.666667],[0.666667,-0.619048],[0.571429,-0.571429],[0.238095,-0.571429]]],"w":1},"E":{"l":[[[0.238095,-0.571429],[0.571429,-0.571429]],[[0.714286,-0.047619],[0.238095,-0.047619],[0.238095,-1.047619],[0.714286,-1.047619]]],"w":0.904762},"D":{"l":[[[0.238095,-0.047619],[0.238095,-1.047619],[0.47619,-1.047619],[0.619048,-1],[0.714286,-0.904762],[0.761905,-0.809524],[0.809524,-0.619048],[0.809524,-0.47619],[0.761905,-0.285714],[0.714286,-0.190476],[0.619048,-0.095238],[0.47619,-0.047619],[0.238095,-0.047619]]],"w":1},"G":{"l":[[[0.761905,-1],[0.666667,-1.047619],[0.52381,-1.047619],[0.380952,-1],[0.285714,-0.904762],[0.238095,-0.809524],[0.190476,-0.619048],[0.190476,-0.47619],[0.238095,-0.285714],[0.285714,-0.190476],[0.380952,-0.095238],[0.52381,-0.047619],[0.619048,-0.047619],[0.761905,-0.095238],[0.809524,-0.142857],[0.809524,-0.47619],[0.619048,-0.47619]]],"w":1},"F":{"l":[[[0.571429,-0.571429],[0.238095,-0.571429]],[[0.238095,-0.047619],[0.238095,-1.047619],[0.714286,-1.047619]]],"w":0.857143},"I":{"l":[[[0.';
+    Result := Result +
+      '238095,-0.047619],[0.238095,-1.047619]]],"w":0.47619},"H":{"l":[[[0.238095,-0.047619],[0.238095,-1.047619]],[[0.238095,-0.571429],[0.809524,-0.571429]],[[0.809524,-0.047619],[0.809524,-1.047619]]],"w":1.047619},"K":{"l":[[[0.238095,-0.047619],[0.238095,-1.047619]],[[0.809524,-0.047619],[0.380952,-0.619048]],[[0.809524,-1.047619],[0.238095,-0.47619]]],"w":1},"J":{"l":[[[0.52381,-1.047619],[0.52381,-0.333333],[0.47619,-0.190476],[0.380952,-0.095238],[0.238095,-0.047619],[0.142857,-0.047619]]],"w":0.761905},"M":{"l":[[[0.238095,-0.047619],[0.238095,-1.047619],[0.571429,-0.333333],[0.904762,-1.047619],[0.904762,-0.047619]]],"w":1.142857},"L":{"l":[[[0.714286,-0.047619],[0.238095,-0.047619],[0.238095,-1.047619]]],"w":0.809524},"O":{"l":[[[0.428571,-1.047619],[0.619048,-1.047619],[0.714286,-1],[0.809524,-0.904762],[0.857143,-0.714286],[0.857143,-0.380952],[0.809524,-0.190476],[0.714286,-0.095238],[0.619048,-0.047619],[0.428571,-0.047619],[0.333333,-0.095238],[0.238095,-0.190476],[0.190476,-0.380952],[0.190476,-0.714286],[0.238095,-0.904762],[0.333333,-1],[0.428571,-1.047619]]],"w":1.047619},"N":{"l":[[[0.238095,-0.047619],[0.238095,-1.047619],[0.809524,-0.047619],[0.809524,-1.047619]]],"w":1.047619},"Q":{"l":[[[0.904762,0.047619],[0.809524,0],[0.714286,-0.095238],[0.571429,-0.238095],[0.47619,-0.285714],[0.380952,-0.285714]],[[0.428571,-0.047619],[0.333333,-0.095238],[0.238095,-0.190476],[0.190476,-0.380952],[0.190476,-0.714286],[0.238095,-0.904762],[0.333333,-1],[0.428571,-1.047619],[0.619048,-1.047619],[0.714286,-1],[0.809524,-0.904762],[0.857143,-0.714286],[0.857143,-0.380952],[0.809524,-0.190476],[0.714286,-0.095238],[0.619048,-0.047619],[0.428571,-0.047619]]],"w":1.047619},"P":{"l":[[[0.238095,-0.047619],[0.238095,-1.047619],[0.619048,-1.047619],[0.714286,-1],[0.761905,-0.952381],[0.809524,-0.857143],[0.809524,-0.714286],[0.761905,-0.619048],[0.714286,-0.571429],[0.619048,-0.52381],[0.238095,-0.52381]]],"w":1},"S":{"l":[[[0.190476,-0.095238],[0.333333,-0.047619],[0.5';
+    Result := Result +
+      '71429,-0.047619],[0.666667,-0.095238],[0.714286,-0.142857],[0.761905,-0.238095],[0.761905,-0.333333],[0.714286,-0.428571],[0.666667,-0.47619],[0.571429,-0.52381],[0.380952,-0.571429],[0.285714,-0.619048],[0.238095,-0.666667],[0.190476,-0.761905],[0.190476,-0.857143],[0.238095,-0.952381],[0.285714,-1],[0.380952,-1.047619],[0.619048,-1.047619],[0.761905,-1]]],"w":0.952381},"R":{"l":[[[0.809524,-0.047619],[0.47619,-0.52381]],[[0.238095,-0.047619],[0.238095,-1.047619],[0.619048,-1.047619],[0.714286,-1],[0.761905,-0.952381],[0.809524,-0.857143],[0.809524,-0.714286],[0.761905,-0.619048],[0.714286,-0.571429],[0.619048,-0.52381],[0.238095,-0.52381]]],"w":1},"U":{"l":[[[0.238095,-1.047619],[0.238095,-0.238095],[0.285714,-0.142857],[0.333333,-0.095238],[0.428571,-0.047619],[0.619048,-0.047619],[0.714286,-0.095238],[0.761905,-0.142857],[0.809524,-0.238095],[0.809524,-1.047619]]],"w":1.047619},"T":{"l":[[[0.095238,-1.047619],[0.666667,-1.047619]],[[0.380952,-0.047619],[0.380952,-1.047619]]],"w":0.761905},"W":{"l":[[[0.142857,-1.047619],[0.380952,-0.047619],[0.571429,-0.761905],[0.761905,-0.047619],[1,-1.047619]]],"w":1.142857},"Y":{"l":[[[0.428571,-0.52381],[0.428571,-0.047619]],[[0.095238,-1.047619],[0.428571,-0.52381],[0.761905,-1.047619]]],"w":0.857143},"_":{"l":[[[0,0.047619],[0.761905,0.047619]]],"w":0.761905},"n":{"l":[[[0.238095,-0.714286],[0.238095,-0.047619]],[[0.238095,-0.619048],[0.285714,-0.666667],[0.380952,-0.714286],[0.52381,-0.714286],[0.619048,-0.666667],[0.666667,-0.571429],[0.666667,-0.047619]]],"w":0.904762},"u":{"l":[[[0.666667,-0.714286],[0.666667,-0.047619]],[[0.238095,-0.714286],[0.238095,-0.190476],[0.285714,-0.095238],[0.380952,-0.047619],[0.52381,-0.047619],[0.619048,-0.095238],[0.666667,-0.142857]]],"w":0.904762},"x":{"l":[[[0.142857,-0.047619],[0.666667,-0.714286]],[[0.142857,-0.714286],[0.666667,-0.047619]]],"w":0.809524}}';
+  end;
 end;
 
 function PickAndPlaceOutputGeneric(Dummy: Boolean): String;
@@ -1473,7 +1472,7 @@ var
   // Current unit string mm/mils
   PnPout: TStringList;
   Count: Integer;
-  FileName: TString;
+  Filename: TString;
   Document: IServerDocument;
   pcbDocPath: TString;
   flagRequirePcbDocFile: Boolean;
@@ -1590,8 +1589,8 @@ Begin
 
         Components := Components + ParseComponentGeneric(Board, Component,
           SelectedFields, SelectedGroupParameters, NoBOM);
-        Footprints := Footprints + ParseFootprintGeneric(Board, Component,
-          SelectedFields, SelectedGroupParameters, NoBOM);
+        Footprints := Footprints + ParseFootprintGeneric(Board,
+          Component, NoBOM);
 
         // PnPout.Add(ParseComponent(Board, Component, SelectedFields, SelectedGroupParameters, NoBOM));
       end;
@@ -1855,7 +1854,7 @@ Begin
   end;
   Board.BoardIterator_Destroy(Iter);
 
-  FontData := ParseFontData();
+  FontData := ParseFontData(0);
 
   Metadata := '';
 
@@ -1868,20 +1867,6 @@ Begin
     PnPout.Add('"Settings":{');
     PnPout.Add('"AddNets":' + JSONBoolToStr(AddNets) + ',');
     PnPout.Add('"AddTracks":' + JSONBoolToStr(AddTracks) + ',');
-
-    PnPout.Add('"Fields":' + '[');
-
-    for hhhhi := 0 to SelectedFields.Count - 1 do
-    begin
-    if (hhhhi > 0) then
-    PnPout.Add(',');
-    hhhh := SelectedFields[hhhhi];
-    PnPout.Add(JSONStrToStr(hhhh));
-    end;
-    PnPout.Add(']');
-
-    PnPout.Add('}');
-    PnPout.Add('}');
 
   *)
 
@@ -1954,24 +1939,24 @@ end;
 { .                                              Generic JSON Generation                                              . }
 { ..................................................................................................................... }
 
-function StringLoadFromFile(FileName: String): String;
+function StringLoadFromFile(Filename: String): String;
 var
   s: TStringList;
 begin
   s := TStringList.Create;
-  s.LoadFromFile(FileName);
+  s.LoadFromFile(Filename);
   Result := s.Text;
   s.Free;
 end;
 
-function ReplaceEx(a, c, FileName: String): String;
+function ReplaceEx(a, c, Filename: String): String;
 var
   s: TStringList;
   e: String;
   i: Integer;
 begin
   s := TStringList.Create;
-  s.LoadFromFile(FileName);
+  s.LoadFromFile(Filename);
   e := s.Text;
   s.Free;
 
@@ -1992,15 +1977,19 @@ end;
 { .                                               Output File Generation                                              . }
 { ..................................................................................................................... }
 
-procedure GenerateHTML(pcbdata, config: String);
+procedure GenerateHTML(pcbdata: String);
 var
   s: TStringList;
   Data: String;
   AltiumPCBData, AltiumFontData: String;
+  Config, AltiumConfig: String;
 begin
+  Config := GenerateNativeConfig(0);
+  AltiumConfig := GenerateAltiumConfig(0);
+
   Data := StringLoadFromFile(GetWDFileName('web\ibom.html'));
 
-  AltiumFontData := StringLoadFromFile(GetWDFileName('altium-fontdata.js'));
+  AltiumFontData := ParseFontData(0);
 
   AltiumPCBData := StringLoadFromFile(GetWDFileName('altium-pcbdata.js'));
   AltiumPCBData := ReplaceEx2(AltiumPCBData, 'FONTDATA', AltiumFontData);
@@ -2012,7 +2001,7 @@ begin
   Data := ReplaceEx(Data, 'LZ-STRING', GetWDFileName('web\lz-string.js'));
   Data := ReplaceEx(Data, 'POINTER_EVENTS_POLYFILL',
     GetWDFileName('web\pep.js'));
-  Data := ReplaceEx2(Data, 'CONFIG', config);
+  Data := ReplaceEx2(Data, 'CONFIG', Config + #13#10 + AltiumConfig);
   Data := ReplaceEx2(Data, 'PCBDATA', pcbdata + #13#10 + AltiumPCBData);
 
   Data := ReplaceEx(Data, 'UTILJS', GetWDFileName('web\util.js'));
@@ -2037,8 +2026,8 @@ end;
 function GenerateNativeConfig(Dummy: Integer): String;
 var
   PnPout: TStringList;
-  s: TStringList;
-  i: Integer;
+  SelectedFields: TStringList;
+  i, Count: Integer;
 Begin
   PnPout := TStringList.Create;
 
@@ -2055,18 +2044,68 @@ Begin
   PnPout.Add('"show_silkscreen":' + JSONBoolToStr(True) + ',');
   PnPout.Add('"fields":' + '[');
 
-  s := GetSelectedFields(0);
-  for i := 0 to s.Count - 1 do
+  Count := 0;
+  SelectedFields := GetSelectedFields(0);
+  for i := 0 to SelectedFields.Count - 1 do
   begin
-    if i > 0 then
+    if Count > 0 then
       PnPout.Add(',');
 
-    PnPout.Add(JSONStrToStr(s[i]));
+    // NOTE: Skip component build-in fields (Value, Footprint)
+    // TODO: Reference, Attribute, Layer
+    if SelectedFields[i] = ValueParameterName then
+      continue;
+    if SelectedFields[i] = '[Footprint]' then
+      continue;
+
+    PnPout.Add(JSONStrToStr(SelectedFields[i]));
+
+    Count := Count + 1;
   end;
 
   PnPout.Add(']' + ',');
   PnPout.Add('"show_pads":' + JSONBoolToStr(True) + ',');
   PnPout.Add('"layer_view":' + JSONStrToStr('FB') + ',');
+  PnPout.Add('};');
+
+  Result := PnPout.Text;
+
+  PnPout.Free;
+end;
+
+function GenerateAltiumConfig(Dummy: Integer): String;
+var
+  PnPout: TStringList;
+  SelectedGroupParameters: TStringList;
+  i, Count: Integer;
+  Value: string;
+Begin
+  PnPout := TStringList.Create;
+
+  PnPout.Add('var altiumconfig = {');
+  PnPout.Add('"group_fields":' + '[');
+
+  Count := 0;
+  SelectedGroupParameters := GetSelectedGroupParameters(0);
+  for i := 0 to SelectedGroupParameters.Count - 1 do
+  begin
+    if Count > 0 then
+      PnPout.Add(',');
+
+    // NOTE: Rename component build-in fields (Value, Footprint...)
+    // TODO: Reference, Attribute, Layer
+    Value := SelectedGroupParameters[i];
+    if SelectedGroupParameters[i] = ValueParameterName then
+      Value := 'Value';
+    if SelectedGroupParameters[i] = '[Footprint]' then
+      Value := 'Footprint';
+
+    PnPout.Add(JSONStrToStr(Value));
+
+    Count := Count + 1;
+  end;
+
+  PnPout.Add(']');
   PnPout.Add('};');
 
   Result := PnPout.Text;
@@ -2096,17 +2135,221 @@ begin
   s.Free;
 end;
 
+// ==============================================================================
+
+var
+  ErrorCode: Integer;
+
+function ProjectGetDocumentByFileName(Project: IProject; Filename: string)
+  : IDocument;
+var
+  i: Integer;
+  Document: IDocument;
+begin
+  Result := nil;
+  for i := 0 to Project.DM_LogicalDocumentCount - 1 do
+  begin
+    Document := Project.DM_LogicalDocuments(i);
+    if Document.DM_FileName <> Filename then
+      continue;
+
+    Result := Document;
+    break;
+  end;
+end;
+
+// TODO: Rename
+// TODO: Refactor
+function FindOriginalProjectDocument(Dummy: Integer): IDocument;
+var
+  WS: IWorkSpace;
+  Project: IProject;
+  ProjName: String;
+  OrigPath: String;
+  i: Integer;
+  NeedDoc, OtherDoc: IDocument;
+begin
+  WS := GetWorkSpace;
+  Project := WS.DM_FocusedProject;
+
+  Result := nil;
+
+  if Project = nil then
+  begin
+    Exit;
+  end;
+
+  NeedDoc := ProjectGetDocumentByFileName(Project,
+    'InteractiveHTMLBOM4Altium2.pas');
+
+  ProjName := ExtractFileName(Project.DM_ProjectFullPath);
+
+  if (NeedDoc <> nil) and
+    (pos('AppData\Local\Temp', Project.DM_ProjectFullPath) = 0) then
+  begin
+    Result := NeedDoc;
+    Exit;
+  end;
+
+  for i := 0 to WS.DM_ProjectCount - 1 do
+  begin
+    if (NeedDoc <> nil) then
+    begin
+      if CompareText(ExtractFileName(WS.DM_Projects(i).DM_ProjectFullPath),
+        ProjName) <> 0 then
+        continue;
+
+      if pos('AppData\Local\Temp', WS.DM_Projects(i).DM_ProjectFullPath) > 0
+      then
+        continue;
+
+      OtherDoc := ProjectGetDocumentByFileName(WS.DM_Projects(i),
+        'InteractiveHTMLBOM4Altium2.pas');
+      if OtherDoc <> nil then
+        Result := OtherDoc;
+      break;
+    end
+    else
+    begin
+      if CompareText(ExtractFileName(WS.DM_Projects(i).DM_ProjectFullPath),
+        'InteractiveHTMLBOM4Altium2.PrjScr') <> 0 then
+        continue;
+
+      if pos('AppData\Local\Temp', WS.DM_Projects(i).DM_ProjectFullPath) > 0
+      then
+        continue;
+
+      OtherDoc := ProjectGetDocumentByFileName(WS.DM_Projects(i),
+        'InteractiveHTMLBOM4Altium2.pas');
+      if OtherDoc <> nil then
+        Result := OtherDoc;
+      break;
+    end;
+  end;
+end;
+
+// TODO: Rename
+function GetScriptDir(Dummy: Integer): string;
+var
+  Document: IDocument;
+begin
+  Result := '';
+
+  Document := FindOriginalProjectDocument(0);
+  if Document <> nil then
+    Result := ExtractFileDir(Document.DM_FullPath());
+end;
+
+// TODO: Rename
+// TODO: Refactor
+function UglyDoIt(dir: string): string;
+var
+  ScriptDir: String;
+  CurrentDir: String;
+begin
+  if (Length(dir) > 0) and (dir[Length(dir)] = '\') then
+  begin
+    Result := '';
+    ErrorCode := -1;
+    Exit;
+  end;
+
+  if not IsRelativePath(dir) then
+  begin
+    Result := dir;
+    ErrorCode := 0;
+    Exit;
+  end;
+
+  ScriptDir := GetScriptDir(0);
+  if ScriptDir = '' then
+  begin
+    Result := '';
+    ErrorCode := -2;
+    Exit;
+  end;
+
+  Result := ScriptDir + '\' + dir;
+  ErrorCode := 0;
+end;
+
+// TODO: Rename
+// TODO: Refactor
+procedure UglyValidateHome(Text: string);
+var
+  ResultPath: String;
+  Files: TStringList;
+  Error, Filename: String;
+  i: Integer;
+begin
+  Error := '';
+  BaseFullDir := UglyDoIt(Text);
+  if ErrorCode = -1 then
+    Error := 'Please enter path without trailing slash';
+  if ErrorCode = -2 then
+    Error := 'Cant find InteractiveHTMLBOM4Altium2.pas in project please add it or use absolute path';
+
+  if Error = '' then
+  begin
+    if not DirectoryExists(BaseFullDir) then
+      Error := 'Path "' + BaseFullDir +
+        '" not found. Please use absolute path or check your path for correction';
+  end;
+
+  if Error = '' then
+  begin
+    Files := TStringList.Create;
+    // Files.Add('altium-fontdata.js');
+    Files.Add('web\ibom.html');
+    // Files.Add('altium-fontdata.js');
+    Files.Add('altium-pcbdata.js');
+    Files.Add('web\ibom.css');
+    Files.Add('web\user-file-examples\user.css');
+    Files.Add('web\split.js');
+    Files.Add('web\lz-string.js');
+    Files.Add('web\pep.js');
+    Files.Add('web\util.js');
+    Files.Add('web\render.js');
+    Files.Add('web\table-util.js');
+    Files.Add('web\ibom.js');
+    Files.Add('web\user-file-examples\user.js');
+    Files.Add('altium-user.js');
+    Files.Add('web\user-file-examples\userheader.html');
+    Files.Add('web\user-file-examples\userfooter.html');
+
+    for i := 0 to Files.Count - 1 do
+    begin
+      Filename := BaseFullDir + '\' + Files[i];
+      if not FileExists(Filename) then
+        Error := 'File "' + Files[i] +
+          '" not found. Please use absolute path or check your path for correction';
+    end;
+    Files.Free;
+  end;
+
+  if Error <> '' then
+    ShowMessage(Error);
+end;
+
+// ==============================================================================
+
 procedure GenerateIBOM(Dummy: Integer);
 var
-  tmp, cfg: String;
+  tmp: String;
 begin
+  // TODO: hmm...
+  GetState_FromParameters(0);
+
+  UglyValidateHome('');
+  if BaseFullDir = '' then
+    Exit;
+
   if FormatIndex = 0 then
   begin
     // Generate HTML file
     tmp := 'var altiumbom = ' + PickAndPlaceOutputGeneric
       (FormatIndex < 2) + ';';
-    cfg := GenerateNativeConfig(0);
-    GenerateHTML(tmp, cfg);
+    GenerateHTML(tmp);
   end
   else if FormatIndex = 1 then
   begin
@@ -2271,7 +2514,6 @@ Begin
   LayerFilterIndex := 0;
   FormatIndex := 0;
   FieldSeparatorIndex := 0;
-  PluginExecutable := 'gostbomkompas.exe';
   DarkMode := False;
   AddNets := False;
   AddTracks := False;
@@ -2310,8 +2552,6 @@ Begin
     FormatIndex := StrToInt(s);
   If GetState_Parameter(AParametersList, 'FieldSeparatorIndex', s) Then
     FieldSeparatorIndex := StrToInt(s);
-  If GetState_Parameter(AParametersList, 'PluginExecutable', s) Then
-    PluginExecutable := s;
   If GetState_Parameter(AParametersList, 'DarkMode', s) Then
     DarkMode := StringsEqual(s, 'True');
   If GetState_Parameter(AParametersList, 'AddNets', s) Then
@@ -2386,7 +2626,6 @@ Begin
   Result := Result + '|' + 'FormatIndex=' + IntToStr(FormatIndex);
   Result := Result + '|' + 'FieldSeparatorIndex=' +
     IntToStr(FieldSeparatorIndex);
-  Result := Result + '|' + 'PluginExecutable=' + PluginExecutable;
   Result := Result + '|' + 'DarkMode=' + BoolToStr(DarkMode, True);
   Result := Result + '|' + 'AddNets=' + BoolToStr(AddNets, True);
   Result := Result + '|' + 'AddTracks=' + BoolToStr(AddTracks, True);
@@ -2492,7 +2731,6 @@ end;
 
 procedure RunGUI;
 begin
-  // MEM_AllowUnder.Text := TEXTBOXINIT;
   OnFormCreated(epRunGUI, '');
 
   MainFrm.ShowModal;
@@ -2595,7 +2833,7 @@ Begin
 
   FormatCb.Items.Add('HTML');
   FormatCb.Items.Add('JS');
-  FormatCb.Items.Add('JSON');
+  FormatCb.Items.Add('JSON Generic');
 end;
 
 function GetSelectedFields(Dummy: Integer): TStringList;

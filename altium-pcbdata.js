@@ -1,55 +1,54 @@
-function fixtext(_text_, _font_) {
-    var res = '';
-    var chrArr = _text_.split("");
-    var mk = chrArr.length;
-    for (var i = 0; i < mk; i++) {
-        if (!(chrArr[i] in _font_)) continue;
-        res += chrArr[i];
-        //if (chrArr[i] == "\t" && !Object.prototype.hasOwnProperty.call(res, chrArr[i])) {
-        //    res[" "] = parseFontChar(" ");
-        //}
-        //if (!Object.prototype.hasOwnProperty.call(res, chrArr[i]) && chrArr[i].charCodeAt(0) > 31) {
-        //    res[chrArr[i]] = parseFontChar(chrArr[i]);
-        //}
+function getfield(_comp_, _fields_) {
+    var fields = [];
+
+    for (const key in _fields_) {
+        var field = _fields_[key];
+        if (field == "Value") {
+            fields.push(_comp_.value);
+        } else if (field == "Footprint") {
+            fields.push(_comp_.footprint);
+        } else {
+            if (field in _comp_.extra_fields)
+                fields.push(_comp_.extra_fields[field]);
+            else
+                fields.push('');
+        }
     }
-    return res;
+
+    return fields;
 }
 
-function fromaltium(_data_) {
-    /*
+function getgroup(_comp_, _fields_) {
+    var fields = [];
 
-    var tracks = {};
-    tracks.B = [];
-    tracks.F = [];
-
-    var zones = {};
-    zones.B = [];
-    zones.F = [];
-
-    var nets = [];
-    var _nets = {};
-    nets.push("No Net");
-    _nets["No Net"] = "No Net";
-
-     */
-    /*
-        for (const key in _data_.Data) {
-            var item = _data_.Data[key];
-
-            //TODO: NoBOM<>Skipped looks like it DNP
-            //bom.skipped.push(index);
-            if (!item.NoBOM) {
-
-
-
-        if (_data_.Settings.AddNets) {
-            result.nets = nets;
+    for (const key in _fields_) {
+        var field = _fields_[key];
+        if (field == "Value") {
+            fields.push(_comp_.value);
+        } else if (field == "Footprint") {
+            fields.push(_comp_.footprint);
+        } else {
+            if (field in _comp_.extra_fields)
+                fields.push(_comp_.extra_fields[field]);
+            else
+                fields.push('');
         }
-        if (_data_.Settings.AddTracks) {
-            result.tracks = tracks;
-            result.zones = zones;
-        }
-    */
+    }
+
+    return fields;
+}
+
+function fromaltium(_data_, _config_, _altiumconfig_) {
+    //TODO: no nets
+    // var _nets = {};
+    // nets.push("No Net");
+    // _nets["No Net"] = "No Net";
+
+    //TODO: NoBOM<>Skipped looks like it DNP
+    //bom.skipped.push(index);
+
+    var group_fields = _altiumconfig_.group_fields;
+    var show_fields = _config_.fields;
 
     var bom = {};
     bom.B = [];
@@ -66,7 +65,7 @@ function fromaltium(_data_) {
 
     for (const key in _data_.components) {
         var item = _data_.components[key];
-        var groupKey = JSON.stringify([item.footprint]);
+        var groupKey = JSON.stringify(getgroup(item, group_fields));
 
         if (item.layer == "F") {
             if (!(groupKey in _F)) {
@@ -87,7 +86,7 @@ function fromaltium(_data_) {
         }
         _both[groupKey].push([item.ref, index]);
 
-        bom.fields[index] = [item.footprint, "F"];
+        bom.fields[index] = getfield(item, show_fields);
 
         index++;
     }
@@ -126,4 +125,4 @@ function fromaltium(_data_) {
     return result;
 }
 
-var pcbdata = fromaltium(altiumbom);
+var pcbdata = fromaltium(altiumbom, config, altiumconfig);
