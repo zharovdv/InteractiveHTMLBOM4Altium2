@@ -783,7 +783,7 @@ begin
     if SelectedFields.IndexOf(Key) = -1 then
       continue;
 
-    //TODO: Strange hack
+    // TODO: Strange hack
     if ListIndexOf(SelectedFields, Key) = -1 then
       continue;
 
@@ -2028,6 +2028,7 @@ var
   PnPout: TStringList;
   SelectedFields: TStringList;
   i, Count: Integer;
+  Value: string;
 Begin
   PnPout := TStringList.Create;
 
@@ -2051,14 +2052,15 @@ Begin
     if Count > 0 then
       PnPout.Add(',');
 
-    // NOTE: Skip component build-in fields (Value, Footprint)
+    // NOTE: Rename component build-in fields (Value, Footprint...)
     // TODO: Reference, Attribute, Layer
+    Value := SelectedFields[i];
     if SelectedFields[i] = ValueParameterName then
-      continue;
+      Value := 'Value';
     if SelectedFields[i] = '[Footprint]' then
-      continue;
+      Value := 'Footprint';
 
-    PnPout.Add(JSONStrToStr(SelectedFields[i]));
+    PnPout.Add(JSONStrToStr(Value));
 
     Count := Count + 1;
   end;

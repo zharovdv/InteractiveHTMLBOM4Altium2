@@ -4,7 +4,7 @@ function getfield(_comp_, _fields_) {
     for (const key in _fields_) {
         var field = _fields_[key];
         if (field == "Value") {
-            fields.push(_comp_.value);
+            fields.push(_comp_.val);
         } else if (field == "Footprint") {
             fields.push(_comp_.footprint);
         } else {
@@ -24,7 +24,7 @@ function getgroup(_comp_, _fields_) {
     for (const key in _fields_) {
         var field = _fields_[key];
         if (field == "Value") {
-            fields.push(_comp_.value);
+            fields.push(_comp_.val);
         } else if (field == "Footprint") {
             fields.push(_comp_.footprint);
         } else {
