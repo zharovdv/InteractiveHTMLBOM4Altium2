@@ -4,6 +4,10 @@ const
   epConfigure = 'epConfigure';
   epGenerate = 'epGenerate';
   epRunGUI = 'epRunGUI';
+  eFormatHTML = 0;
+  eFormatJS = 1;
+  eFormatJSON = 2;
+  eFormatRunAltiumIbomReleaser = 3;
 
 var
   CurrWorkSpace: IWorkSpace; // An Interface handle to the current workspace
@@ -36,7 +40,7 @@ var
   BaseFullDir: String;
 
 procedure SetupProjectVariant(Dummy: Integer); forward;
-function GetBoard(Dummy: Integer): IPCB_Board; forward;
+function GetBoard(RequirePcbDocFile: Boolean;): IPCB_Board; forward;
 function GenerateNativeConfig(Dummy: Integer): String; forward;
 function GenerateAltiumConfig(Dummy: Integer): String; forward;
 procedure PopulateChoiceFields(Dummy: Integer); forward;
@@ -45,7 +49,7 @@ procedure PopulateDynamicFields(Board: IPCB_Board); forward;
 procedure InitializeProject(Dummy: Integer); forward;
 function GetSelectedFields(Dummy: Integer): TStringList; forward;
 function GetSelectedGroupParameters(Dummy: Integer): TStringList; forward;
-function GetState_FromParameters(Dummy: Integer): String; forward;
+function GetParameters_FromState(Dummy: Integer): String; forward;
 
 { ..................................................................................................................... }
 { .                                              Global Variable Mapping                                              . }
@@ -74,12 +78,45 @@ end;
 { .                                            Path and Filename Handling                                             . }
 { ..................................................................................................................... }
 
+{
+  In: 'C:\Path\to\file.txt'
+  Out: 'file'
+}
+function GetFileNameWithoutExtension(const APath: String): String;
+var
+  FileName, NameOnly: String;
+  DotPos: Integer;
+begin
+  // Extract the file name (with extension)
+  FileName := ExtractFileName(APath);
+
+  // Find the last dot in the file name
+  DotPos := LastDelimiter('.', FileName);
+
+  // Remove the extension if a dot was found (not at position 1)
+  if (DotPos > 0) then
+    NameOnly := Copy(FileName, 1, DotPos - 1)
+  else
+    NameOnly := FileName;
+
+  Result := NameOnly;
+end;
+
+
 Function GetOutputFileNameWithExtension(Ext: String): String;
 Begin
   If TargetFolder = '' Then
     TargetFolder := CurrProject.DM_GetOutputPath;
-  If TargetFileName = '' Then
-    TargetFileName := CurrProject.DM_ProjectFileName;
+  If (TargetFileName = '') or (TargetFileName = '.PrjPcb') then
+  begin
+    // Predict filename similar to Altium-native outputs, if no explicit filename requested.
+    if GetBoard(False) = nil then
+      TargetFileName := 'iBOM for (Cannot Find Board)'
+    else if ProjectVariant <> nil then
+      TargetFileName := 'iBOM for ' + GetFileNameWithoutExtension(GetBoard(True).FileName) + '(' + ProjectVariant.DM_Description + ')'
+    else
+      TargetFileName := 'iBOM for ' + GetFileNameWithoutExtension(GetBoard(True).FileName);
+  end;
   Result := AddSlash(TargetFolder) + TargetPrefix +
     ChangeFileExt(TargetFileName, Ext);
   // CurrString := StringReplace( CurrString, '<DATE>',    DateStr,    MkSet( rfReplaceAll, rfIgnoreCase ) );
@@ -94,12 +131,6 @@ begin
   Result := BaseFullDir + '\' + FF;
 end;
 
-// TODO: Crash in Release Manager
-procedure MyAbort(Value: string);
-begin
-  // Empty
-end;
-
 { ***************************************************************************
   * function FindProjectPcbDocFile()
   *  Find the PcbDoc file associated with this project.
@@ -109,7 +140,7 @@ end;
   *  Returns:  0 on success, 1 if not successful.
   *************************************************************************** }
 function FindProjectPcbDocFile(Project: IProject;
-  flagRequirePcbDocFile: Boolean; var pcbDocPath: TDynamicString;): Integer;
+  RequirePcbDocFile: Boolean; var pcbDocPath: TDynamicString;): Integer;
 var
   Document: IDocument;
   k: Integer;
@@ -151,31 +182,21 @@ begin
   begin
 
     { See if the user has requested operations that require a PcbDoc file. }
-    if (flagRequirePcbDocFile) then
+    if (RequirePcbDocFile) then
     begin
-      MyAbort('Found ' + IntToStr(numPcbDocs) +
+      ShowMessage('Found ' + IntToStr(numPcbDocs) +
         ' PcbDoc files in your project.  This number should have been exactly 1!');
-    end
-
-    { Else just issue a warning. }
-    else
-    begin
-      { Issue warning modal dialog box with specified warning message,
-        no reply after clicking Ok, and specified reply after clicking Cancel. }
-      IssueWarningWithOkOrCancel
-        ('Unable to find a PcbDoc file within this project.' + constLineBreak +
-        'However, since you have not requested operations that require a PcbDoc file, I will proceed to generate other OutJob outputs if you click OK.',
-        '', 'Aborting script at user request due to missing PcbDoc file ' +
-        constPcbVersionParm + '.');
-    end; { endelse }
+      Abort;
+    end; { endif }
 
   end; { endif }
 
   { Make sure there is no more than 1 PcbDoc file. }
   if (numPcbDocs > 1) then
   begin
-    MyAbort('Found ' + IntToStr(numPcbDocs) +
+    ShowMessage('Found ' + IntToStr(numPcbDocs) +
       ' PcbDoc files in your project.  This script currently only supports having 1 PcbDoc file per project!');
+    Abort;
   end;
 
   // ShowMessage('About to leave FindProjectPcbDocFile(), pcbDocPath is ' + pcbDocPath);
@@ -186,34 +207,39 @@ end; { end FindProjectPcbDocFile() }
 { .                                               Workspace Interaction                                               . }
 { ..................................................................................................................... }
 
-Function GetBoard(Dummy: Integer): IPCB_Board;
-Var
+function GetBoard(RequirePcbDocFile: Boolean;): IPCB_Board;
+var
   Board: IPCB_Board; // document board object
   Document: IServerDocument;
   pcbDocPath: TString;
-  flagRequirePcbDocFile: Boolean;
-Begin
+begin
+  Result := nil;
+
   // Make sure the current Workspace opens or else quit this script
   CurrWorkSpace := GetWorkSpace;
-  If (CurrWorkSpace = Nil) Then
+  if (CurrWorkSpace = nil) then
     Exit;
 
   // Make sure the currently focussed Project in this Workspace opens or else
   // quit this script
   CurrProject := CurrWorkSpace.DM_FocusedProject;
-  If CurrProject = Nil Then
+  if CurrProject = nil then
     Exit;
 
-  flagRequirePcbDocFile := True;
-
-  FindProjectPcbDocFile(CurrProject, flagRequirePcbDocFile, pcbDocPath);
+  FindProjectPcbDocFile(CurrProject, RequirePcbDocFile, pcbDocPath);
+  if (not RequirePcbDocFile) and (pcbDocPath = '') then
+  begin
+    // Early "abort" to prevent trying to call OpenDocument when no PcbDoc available
+    // Just return nil.
+    Exit;
+  end;
 
   // TODO: Close
   Document := Client.OpenDocument('pcb', pcbDocPath);
   Board := PCBServer.GetPCBBoardByPath(pcbDocPath);
 
-  If Not Assigned(Board) Then // check of active document
-  Begin
+  if Not Assigned(Board) then // check of active document
+  begin
     ShowMessage('The Current Document is not a PCB Document.');
     Exit;
   end;
@@ -1452,7 +1478,7 @@ begin
     Result := Result +
       '{"0":{"l":[[[0.428571,-1.047619],[0.52381,-1.047619],[0.619048,-1],[0.666667,-0.952381],[0.714286,-0.857143],[0.761905,-0.666667],[0.761905,-0.428571],[0.714286,-0.238095],[0.666667,-0.142857],[0.619048,-0.095238],[0.52381,-0.047619],[0.428571,-0.047619],[0.333333,-0.095238],[0.285714,-0.142857],[0.238095,-0.238095],[0.190476,-0.428571],[0.190476,-0.666667],[0.238095,-0.857143],[0.285714,-0.952381],[0.333333,-1],[0.428571,-1.047619]]],"w":0.952381},"1":{"l":[[[0.761905,-0.047619],[0.190476,-0.047619]],[[0.47619,-0.047619],[0.47619,-1.047619],[0.380952,-0.904762],[0.285714,-0.809524],[0.190476,-0.761905]]],"w":0.952381},"2":{"l":[[[0.190476,-0.952381],[0.238095,-1],[0.333333,-1.047619],[0.571429,-1.047619],[0.666667,-1],[0.714286,-0.952381],[0.761905,-0.857143],[0.761905,-0.761905],[0.714286,-0.619048],[0.142857,-0.047619],[0.761905,-0.047619]]],"w":0.952381},"3":{"l":[[[0.142857,-1.047619],[0.761905,-1.047619],[0.428571,-0.666667],[0.571429,-0.666667],[0.666667,-0.619048],[0.714286,-0.571429],[0.761905,-0.47619],[0.761905,-0.238095],[0.714286,-0.142857],[0.666667,-0.095238],[0.571429,-0.047619],[0.285714,-0.047619],[0.190476,-0.095238],[0.142857,-0.142857]]],"w":0.952381},"4":{"l":[[[0.666667,-0.714286],[0.666667,-0.047619]],[[0.428571,-1.095238],[0.190476,-0.380952],[0.809524,-0.380952]]],"w":0.952381},"5":{"l":[[[0.714286,-1.047619],[0.238095,-1.047619],[0.190476,-0.571429],[0.238095,-0.619048],[0.333333,-0.666667],[0.571429,-0.666667],[0.666667,-0.619048],[0.714286,-0.571429],[0.761905,-0.47619],[0.761905,-0.238095],[0.714286,-0.142857],[0.666667,-0.095238],[0.571429,-0.047619],[0.333333,-0.047619],[0.238095,-0.095238],[0.190476,-0.142857]]],"w":0.952381},"6":{"l":[[[0.666667,-1.047619],[0.47619,-1.047619],[0.380952,-1],[0.333333,-0.952381],[0.238095,-0.809524],[0.190476,-0.619048],[0.190476,-0.238095],[0.238095,-0.142857],[0.285714,-0.095238],[0.380952,-0.047619],[0.571429,-0.047619],[0.666667,-0.095238],[0.714286,-0.142857],[0.761905,-0.238095],[0.761905,-0.476';
     Result := Result +
-      '19],[0.714286,-0.571429],[0.666667,-0.619048],[0.571429,-0.666667],[0.380952,-0.666667],[0.285714,-0.619048],[0.238095,-0.571429],[0.190476,-0.47619]]],"w":0.952381},"7":{"l":[[[0.142857,-1.047619],[0.809524,-1.047619],[0.380952,-0.047619]]],"w":0.952381},"8":{"l":[[[0.380952,-0.619048],[0.285714,-0.666667],[0.238095,-0.714286],[0.190476,-0.809524],[0.190476,-0.857143],[0.238095,-0.952381],[0.285714,-1],[0.380952,-1.047619],[0.571429,-1.047619],[0.666667,-1],[0.714286,-0.952381],[0.761905,-0.857143],[0.761905,-0.809524],[0.714286,-0.714286],[0.666667,-0.666667],[0.571429,-0.619048],[0.380952,-0.619048],[0.285714,-0.571429],[0.238095,-0.52381],[0.190476,-0.428571],[0.190476,-0.238095],[0.238095,-0.142857],[0.285714,-0.095238],[0.380952,-0.047619],[0.571429,-0.047619],[0.666667,-0.095238],[0.714286,-0.142857],[0.761905,-0.238095],[0.761905,-0.428571],[0.714286,-0.52381],[0.666667,-0.571429],[0.571429,-0.619048]]],"w":0.952381},"9":{"l":[[[0.285714,-0.047619],[0.47619,-0.047619],[0.571429,-0.095238],[0.619048,-0.142857],[0.714286,-0.285714],[0.761905,-0.47619],[0.761905,-0.857143],[0.714286,-0.952381],[0.666667,-1],[0.571429,-1.047619],[0.380952,-1.047619],[0.285714,-1],[0.238095,-0.952381],[0.190476,-0.857143],[0.190476,-0.619048],[0.238095,-0.52381],[0.285714,-0.47619],[0.380952,-0.428571],[0.571429,-0.428571],[0.666667,-0.47619],[0.714286,-0.52381],[0.761905,-0.619048]]],"w":0.952381},"V":{"l":[[[0.095238,-1.047619],[0.428571,-0.047619],[0.761905,-1.047619]]],"w":0.857143},"-":{"l":[[[0.238095,-0.428571],[1,-0.428571]]],"w":1.238095},",":{"l":[[[0.285714,-0.095238],[0.285714,-0.047619],[0.238095,0.047619],[0.190476,0.095238]]],"w":0.47619},"/":{"l":[[[0.952381,-1.095238],[0.095238,0.190476]]],"w":1.047619},".":{"l":[[[0.238095,-0.142857],[0.285714,-0.095238],[0.238095,-0.047619],[0.190476,-0.095238],[0.238095,-0.142857],[0.238095,-0.047619]]],"w":0.47619},"µ":{"l":[[[0.238095,-0.714286],[0.238095,0.285714]],[[0.714286,-0.190476],[0.761905,-0.095238],[0.857143,-0.';
+      '19],[0.714286,-0.571429],[0.666667,-0.619048],[0.571429,-0.666667],[0.380952,-0.666667],[0.285714,-0.619048],[0.238095,-0.571429],[0.190476,-0.47619]]],"w":0.952381},"7":{"l":[[[0.142857,-1.047619],[0.809524,-1.047619],[0.380952,-0.047619]]],"w":0.952381},"8":{"l":[[[0.380952,-0.619048],[0.285714,-0.666667],[0.238095,-0.714286],[0.190476,-0.809524],[0.190476,-0.857143],[0.238095,-0.952381],[0.285714,-1],[0.380952,-1.047619],[0.571429,-1.047619],[0.666667,-1],[0.714286,-0.952381],[0.761905,-0.857143],[0.761905,-0.809524],[0.714286,-0.714286],[0.666667,-0.666667],[0.571429,-0.619048],[0.380952,-0.619048],[0.285714,-0.571429],[0.238095,-0.52381],[0.190476,-0.428571],[0.190476,-0.238095],[0.238095,-0.142857],[0.285714,-0.095238],[0.380952,-0.047619],[0.571429,-0.047619],[0.666667,-0.095238],[0.714286,-0.142857],[0.761905,-0.238095],[0.761905,-0.428571],[0.714286,-0.52381],[0.666667,-0.571429],[0.571429,-0.619048]]],"w":0.952381},"9":{"l":[[[0.285714,-0.047619],[0.47619,-0.047619],[0.571429,-0.095238],[0.619048,-0.142857],[0.714286,-0.285714],[0.761905,-0.47619],[0.761905,-0.857143],[0.714286,-0.952381],[0.666667,-1],[0.571429,-1.047619],[0.380952,-1.047619],[0.285714,-1],[0.238095,-0.952381],[0.190476,-0.857143],[0.190476,-0.619048],[0.238095,-0.52381],[0.285714,-0.47619],[0.380952,-0.428571],[0.571429,-0.428571],[0.666667,-0.47619],[0.714286,-0.52381],[0.761905,-0.619048]]],"w":0.952381},"V":{"l":[[[0.095238,-1.047619],[0.428571,-0.047619],[0.761905,-1.047619]]],"w":0.857143},"-":{"l":[[[0.238095,-0.428571],[1,-0.428571]]],"w":1.238095},",":{"l":[[[0.285714,-0.095238],[0.285714,-0.047619],[0.238095,0.047619],[0.190476,0.095238]]],"w":0.47619},"/":{"l":[[[0.952381,-1.095238],[0.095238,0.190476]]],"w":1.047619},".":{"l":[[[0.238095,-0.142857],[0.285714,-0.095238],[0.238095,-0.047619],[0.190476,-0.095238],[0.238095,-0.142857],[0.238095,-0.047619]]],"w":0.47619},"ï¿½":{"l":[[[0.238095,-0.714286],[0.238095,0.285714]],[[0.714286,-0.190476],[0.761905,-0.095238],[0.857143,-0.';
     Result := Result +
       '047619]],[[0.238095,-0.190476],[0.285714,-0.095238],[0.380952,-0.047619],[0.571429,-0.047619],[0.666667,-0.095238],[0.714286,-0.190476],[0.714286,-0.714286]]],"w":1.047619},"A":{"l":[[[0.190476,-0.333333],[0.666667,-0.333333]],[[0.095238,-0.047619],[0.428571,-1.047619],[0.761905,-0.047619]]],"w":0.857143},"C":{"l":[[[0.809524,-0.142857],[0.761905,-0.095238],[0.619048,-0.047619],[0.52381,-0.047619],[0.380952,-0.095238],[0.285714,-0.190476],[0.238095,-0.285714],[0.190476,-0.47619],[0.190476,-0.619048],[0.238095,-0.809524],[0.285714,-0.904762],[0.380952,-1],[0.52381,-1.047619],[0.619048,-1.047619],[0.761905,-1],[0.809524,-0.952381]]],"w":1},"B":{"l":[[[0.571429,-0.571429],[0.714286,-0.52381],[0.761905,-0.47619],[0.809524,-0.380952],[0.809524,-0.238095],[0.761905,-0.142857],[0.714286,-0.095238],[0.619048,-0.047619],[0.238095,-0.047619],[0.238095,-1.047619],[0.571429,-1.047619],[0.666667,-1],[0.714286,-0.952381],[0.761905,-0.857143],[0.761905,-0.761905],[0.714286,-0.666667],[0.666667,-0.619048],[0.571429,-0.571429],[0.238095,-0.571429]]],"w":1},"E":{"l":[[[0.238095,-0.571429],[0.571429,-0.571429]],[[0.714286,-0.047619],[0.238095,-0.047619],[0.238095,-1.047619],[0.714286,-1.047619]]],"w":0.904762},"D":{"l":[[[0.238095,-0.047619],[0.238095,-1.047619],[0.47619,-1.047619],[0.619048,-1],[0.714286,-0.904762],[0.761905,-0.809524],[0.809524,-0.619048],[0.809524,-0.47619],[0.761905,-0.285714],[0.714286,-0.190476],[0.619048,-0.095238],[0.47619,-0.047619],[0.238095,-0.047619]]],"w":1},"G":{"l":[[[0.761905,-1],[0.666667,-1.047619],[0.52381,-1.047619],[0.380952,-1],[0.285714,-0.904762],[0.238095,-0.809524],[0.190476,-0.619048],[0.190476,-0.47619],[0.238095,-0.285714],[0.285714,-0.190476],[0.380952,-0.095238],[0.52381,-0.047619],[0.619048,-0.047619],[0.761905,-0.095238],[0.809524,-0.142857],[0.809524,-0.47619],[0.619048,-0.47619]]],"w":1},"F":{"l":[[[0.571429,-0.571429],[0.238095,-0.571429]],[[0.238095,-0.047619],[0.238095,-1.047619],[0.714286,-1.047619]]],"w":0.857143},"I":{"l":[[[0.';
     Result := Result +
@@ -1475,7 +1501,7 @@ var
   Filename: TString;
   Document: IServerDocument;
   pcbDocPath: TString;
-  flagRequirePcbDocFile: Boolean;
+  RequirePcbDocFile: Boolean;
   Separator: TString;
   Iter, Prim: TObject;
   PadsCount: Integer;
@@ -1521,10 +1547,9 @@ Begin
   If CurrProject = Nil Then
     Exit;
 
-  flagRequirePcbDocFile := True;
+  RequirePcbDocFile := True;
 
-  FindProjectPcbDocFile(CurrProject, flagRequirePcbDocFile,
-    { var } pcbDocPath);
+  FindProjectPcbDocFile(CurrProject, RequirePcbDocFile, pcbDocPath);
 
   // TODO: Close
   _Document := Client.OpenDocument('pcb', pcbDocPath);
@@ -2339,35 +2364,36 @@ procedure GenerateIBOM(Dummy: Integer);
 var
   tmp: String;
 begin
-  // TODO: hmm...
-  GetState_FromParameters(0);
 
-  UglyValidateHome('');
-  if BaseFullDir = '' then
-    Exit;
-
-  if FormatIndex = 0 then
+  if FormatIndex = eFormatHTML then
   begin
     // Generate HTML file
+    UglyValidateHome('');
+    if BaseFullDir = '' then
+      Exit;
     tmp := 'var altiumbom = ' + PickAndPlaceOutputGeneric
       (FormatIndex < 2) + ';';
     GenerateHTML(tmp);
   end
-  else if FormatIndex = 1 then
+  else if FormatIndex = eFormatJS then
   begin
     // Generate JSON in JavaScript file
     tmp := 'var altiumbom = ' + PickAndPlaceOutputGeneric
       (FormatIndex < 2) + ';';
     DumpAsJS(tmp);
   end
-  else
+  else if FormatIndex = eFormatJSON then
   begin
     // Generate generic JSON file, according to
     // https://github.com/openscopeproject/InteractiveHtmlBom/blob/master/InteractiveHtmlBom/ecad/schema/genericjsonpcbdata_v1.schema
     tmp := PickAndPlaceOutputGeneric(FormatIndex < 2);
     DumpAsJSON(tmp);
+  end
+  else
+  begin
+    ShowMessage('Unknown format index: ' + IntToStr(FormatIndex));
+    Abort;
   end;
-  // TODO: else assert
 end;
 
 { ..................................................................................................................... }
@@ -2452,7 +2478,7 @@ end;
 {
   Transfers the global state variables into the Form object values
 }
-procedure SetState_Controls(Dummy: Integer);
+procedure SetControls_FromState(Dummy: Integer);
 var
   i: Integer;
   tmpn: String;
@@ -2581,7 +2607,7 @@ end;
 {
   Transfers the Form object values into the global state variables
 }
-procedure GetState_Controls(Dummy: Integer);
+procedure SetState_FromControls(Dummy: Integer);
 var
   i: Integer;
 Begin
@@ -2616,9 +2642,11 @@ Begin
   /// ////////////////////////////////////////////
 end;
 
-Function GetState_FromParameters(Dummy: Integer): String;
+Function GetParameters_FromState(Dummy: Integer): String;
 Begin
-  GetState_Controls(0);
+  // First, need to update the state because the user might have changed
+  // settings in the form.
+  SetState_FromControls(0);
 
   Result := '';
   { Result := Result +       'ParameterName='        + ParameterName;
@@ -2658,9 +2686,14 @@ begin
   EntryPoint := AEntryPoint;
 
   Initialize(0);
-  PopulateChoiceFields(0);
   SetState_FromParameters(Parameters);
-  SetState_Controls(0);
+  if (EntryPoint = epRunGUI) or (EntryPoint = epConfigure) then
+  begin
+    // Don't access objects of the form if it's not shown.
+    // Otherwise, this might lead to access violations/crashes.
+    PopulateChoiceFields(0);
+    SetControls_FromState(0);
+  end;
 end;
 
 { ..................................................................................................................... }
@@ -2673,29 +2706,36 @@ end;
   them. The file names should be returned via the Result string, separated by
   '|' characters.
 }
-Function PredictOutputFileNames(Parameters: String): String;
-Var
+function PredictOutputFileNames(Parameters: String): String;
+var
   OutputFileNames: TStringList;
-Begin
+begin
   OnFormCreated(epPredictOutputFileNames, Parameters);
 
   OutputFileNames := TStringList.Create;
   OutputFileNames.Delimiter := '|';
   OutputFileNames.StrictDelimiter := True;
 
-  If FormatIndex = 0 Then
-  Begin
+  if FormatIndex = eFormatHTML then
+  begin
     OutputFileNames.Add(GetOutputFileNameWithExtension('.html'));
   end
-  Else If FormatIndex = 1 Then
-  Begin
+  else if FormatIndex = eFormatJS then
+  begin
     OutputFileNames.Add(GetOutputFileNameWithExtension('.js'));
   end
-  Else
-  Begin
+  else if FormatIndex = eFormatJSON then
+  begin
     OutputFileNames.Add(GetOutputFileNameWithExtension('.json'));
+  end
+  else
+  begin
+    Result := 'Unknown format index "' + IntToStr(FormatIndex) + '"';
+    OutputFileNames.Free;
+    // Don't "Abort" because we want the file preview to work.
+    // Just subtly hint to the developer that something is wrong.
+    Exit;
   end;
-  // TODO: else assert
 
   Result := OutputFileNames.DelimitedText;
   OutputFileNames.Free;
@@ -2715,7 +2755,7 @@ Begin
   Result := '';
   If MainFrm.ShowModal = mrOK Then
   Begin
-    Result := GetState_FromParameters(0);
+    Result := GetParameters_FromState(0);
   end;
 end;
 
@@ -2728,6 +2768,7 @@ procedure Generate(Parameters: String);
 begin
   OnFormCreated(epGenerate, Parameters);
 
+  // State is set from the input Parameters
   GenerateIBOM(0);
 end;
 
@@ -2757,9 +2798,12 @@ begin
 end;
 
 procedure TMainFrm.OKBtnClick(Sender: TObject);
-Begin
+begin
   if EntryPoint = epRunGUI then
   begin
+    // If directly run, we need to update the state variables from
+    // the form controls
+    SetState_FromControls(0);
     GenerateIBOM(0);
   end;
   ModalResult := mrOK;
@@ -2780,7 +2824,7 @@ Var
 begin
   PopulateStaticFields(0);
 
-  Board := GetBoard(0);
+  Board := GetBoard(True);
   PopulateDynamicFields(Board);
 end;
 
