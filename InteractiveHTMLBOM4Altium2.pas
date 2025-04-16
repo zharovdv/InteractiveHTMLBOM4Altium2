@@ -2364,13 +2364,13 @@ procedure GenerateIBOM(Dummy: Integer);
 var
   tmp: String;
 begin
-  UglyValidateHome('');
-  if BaseFullDir = '' then
-    Exit;
 
   if FormatIndex = eFormatHTML then
   begin
     // Generate HTML file
+    UglyValidateHome('');
+    if BaseFullDir = '' then
+      Exit;
     tmp := 'var altiumbom = ' + PickAndPlaceOutputGeneric
       (FormatIndex < 2) + ';';
     GenerateHTML(tmp);
