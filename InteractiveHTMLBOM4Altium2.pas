@@ -49,7 +49,7 @@ procedure PopulateDynamicFields(Board: IPCB_Board); forward;
 procedure InitializeProject(Dummy: Integer); forward;
 function GetSelectedFields(Dummy: Integer): TStringList; forward;
 function GetSelectedGroupParameters(Dummy: Integer): TStringList; forward;
-function GetState_FromParameters(Dummy: Integer): String; forward;
+function GetParameters_FromState(Dummy: Integer): String; forward;
 
 { ..................................................................................................................... }
 { .                                              Global Variable Mapping                                              . }
@@ -2343,9 +2343,6 @@ procedure GenerateIBOM(Dummy: Integer);
 var
   tmp: String;
 begin
-  // TODO: hmm...
-  GetState_FromParameters(0);
-
   UglyValidateHome('');
   if BaseFullDir = '' then
     Exit;
@@ -2460,7 +2457,7 @@ end;
 {
   Transfers the global state variables into the Form object values
 }
-procedure SetState_Controls(Dummy: Integer);
+procedure SetControls_FromState(Dummy: Integer);
 var
   i: Integer;
   tmpn: String;
@@ -2589,7 +2586,7 @@ end;
 {
   Transfers the Form object values into the global state variables
 }
-procedure GetState_Controls(Dummy: Integer);
+procedure SetState_FromControls(Dummy: Integer);
 var
   i: Integer;
 Begin
@@ -2624,9 +2621,11 @@ Begin
   /// ////////////////////////////////////////////
 end;
 
-Function GetState_FromParameters(Dummy: Integer): String;
+Function GetParameters_FromState(Dummy: Integer): String;
 Begin
-  GetState_Controls(0);
+  // First, need to update the state because the user might have changed
+  // settings in the form.
+  SetState_FromControls(0);
 
   Result := '';
   { Result := Result +       'ParameterName='        + ParameterName;
@@ -2666,9 +2665,14 @@ begin
   EntryPoint := AEntryPoint;
 
   Initialize(0);
-  PopulateChoiceFields(0);
   SetState_FromParameters(Parameters);
-  SetState_Controls(0);
+  if (EntryPoint = epRunGUI) or (EntryPoint = epConfigure) then
+  begin
+    // Don't access objects of the form if it's not shown.
+    // Otherwise, this might lead to access violations/crashes.
+    PopulateChoiceFields(0);
+    SetControls_FromState(0);
+  end;
 end;
 
 { ..................................................................................................................... }
@@ -2730,7 +2734,7 @@ Begin
   Result := '';
   If MainFrm.ShowModal = mrOK Then
   Begin
-    Result := GetState_FromParameters(0);
+    Result := GetParameters_FromState(0);
   end;
 end;
 
@@ -2743,6 +2747,7 @@ procedure Generate(Parameters: String);
 begin
   OnFormCreated(epGenerate, Parameters);
 
+  // State is set from the input Parameters
   GenerateIBOM(0);
 end;
 
@@ -2772,9 +2777,12 @@ begin
 end;
 
 procedure TMainFrm.OKBtnClick(Sender: TObject);
-Begin
+begin
   if EntryPoint = epRunGUI then
   begin
+    // If directly run, we need to update the state variables from
+    // the form controls
+    SetState_FromControls(0);
     GenerateIBOM(0);
   end;
   ModalResult := mrOK;
