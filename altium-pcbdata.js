@@ -38,15 +38,11 @@ function getgroup(_comp_, _fields_) {
     return fields;
 }
 
-function fromaltium(_data_, _config_, _altiumconfig_) {
-    //TODO: no nets
-    // var _nets = {};
-    // nets.push("No Net");
-    // _nets["No Net"] = "No Net";
-
-    //TODO: NoBOM<>Skipped looks like it DNP
-    //bom.skipped.push(index);
-
+/**
+ * 
+ * Equivalent of InteractiveHtmlBom.core.ibom.py:main#L331
+ */
+function generate_bom(_data_) {
     var group_fields = _altiumconfig_.group_fields;
     var show_fields = _config_.fields;
 
@@ -106,9 +102,21 @@ function fromaltium(_data_, _config_, _altiumconfig_) {
         bom.both.push(group);
     }
 
+    return bom;
+}
+
+function fromaltium(_data_, _config_, _altiumconfig_) {
+    //TODO: no nets
+    // var _nets = {};
+    // nets.push("No Net");
+    // _nets["No Net"] = "No Net";
+
+    //TODO: NoBOM<>Skipped looks like it DNP
+    //bom.skipped.push(index);
+
     var result = {};
 
-    result.bom = bom;
+    result.bom = generate_bom(_data_);
 
     result.drawings = _data_.pcbdata.drawings;
     result.edges = _data_.pcbdata.edges;
