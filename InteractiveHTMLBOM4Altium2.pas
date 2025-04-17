@@ -74,6 +74,20 @@ end;
 { .                                            Path and Filename Handling                                             . }
 { ..................................................................................................................... }
 
+procedure EnsureDirectoryExistsForFile(const FilePath: String);
+var
+  DirPath: String;
+begin
+  ShowMessage('File be here - '+ExpandFileName(FilePath));
+  DirPath := ExtractFilePath(ExpandFileName(FilePath));
+
+  if not DirectoryExists(DirPath) then
+  begin
+    if not ForceDirectories(DirPath) then
+      ShowMessage('Cant create ' + DirPath)
+  end;
+end;
+
 Function GetOutputFileNameWithExtension(Ext: String): String;
 Begin
   If TargetFolder = '' Then
@@ -2006,6 +2020,8 @@ begin
   Data := ReplaceEx(Data, 'USERFOOTER',
     GetWDFileName('web\user-file-examples\userfooter.html'));
 
+  EnsureDirectoryExistsForFile(GetOutputFileNameWithExtension('.html'));  
+
   // Save the manipulated HTML to the output file
   s := TStringList.Create;
   s.Text := Data;
@@ -2110,6 +2126,8 @@ var
   s: TStringList;
   Data: String;
 begin
+  EnsureDirectoryExistsForFile(GetOutputFileNameWithExtension('.js'));
+  
   s := TStringList.Create;
   s.Text := pcbdata;
   s.SaveToFile(GetOutputFileNameWithExtension('.js'));
@@ -2121,6 +2139,7 @@ var
   s: TStringList;
   Data: String;
 begin
+  EnsureDirectoryExistsForFile(GetOutputFileNameWithExtension('.json'));
   s := TStringList.Create;
   s.Text := pcbdata;
   s.SaveToFile(GetOutputFileNameWithExtension('.json'));
