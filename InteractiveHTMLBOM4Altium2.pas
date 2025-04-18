@@ -555,7 +555,16 @@ end;
 { .                                              Generic JSON Generation                                              . }
 { ..................................................................................................................... }
 
+function NormalizeAngle(Angle: Single): Single;
+begin
+  Result := Angle - 360 * Trunc(Angle / 360);
+  if Result < 0 then
+    Result := Result + 360;
+end;
+
 function ParseArcGeneric(Board: IPCB_Board; Prim: TObject): String;
+const
+  epsilon = 0.001;
 var
   PnPout: TStringList;
   EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
@@ -563,6 +572,27 @@ var
 begin
   PnPout := TStringList.Create;
 
+  if (Abs(NormalizeAngle(-Prim.EndAngle) - NormalizeAngle(-Prim.StartAngle)) < epsilon) then
+  begin
+  EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.LineWidth));
+  EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.XCenter - Board.XOrigin));
+  EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.YCenter - Board.YOrigin));
+  EdgeX2 := JSONFloatToStr(-Prim.EndAngle);
+  EdgeY2 := JSONFloatToStr(-Prim.StartAngle);
+  EdgeRadius := JSONFloatToStr(CoordToMMs(Prim.Radius));
+
+  EdgeType := 'circle';
+
+  PnPout.Add('{');
+  PnPout.Add('"type":' + JSONStrToStr(EdgeType) + ',');
+  PnPout.Add('"start":' + '[' + EdgeX1 + ', ' + EdgeY1 + ']' + ',');
+  PnPout.Add('"radius":' + EdgeRadius + ',');
+  //filled
+  PnPout.Add('"width":' + EdgeWidth);
+  PnPout.Add('}');
+  end
+  else
+  begin
   EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.LineWidth));
   EdgeX1 := JSONFloatToStr(CoordToMMs(Prim.XCenter - Board.XOrigin));
   EdgeY1 := JSONFloatToStr(-CoordToMMs(Prim.YCenter - Board.YOrigin));
@@ -580,6 +610,7 @@ begin
   PnPout.Add('"startangle":' + EdgeX2 + ',');
   PnPout.Add('"endangle":' + EdgeY2);
   PnPout.Add('}');
+  end;
 
   Result := PnPout.Text;
   PnPout.Free;
