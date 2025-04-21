@@ -556,7 +556,7 @@ end;
 
 function ParseArcGeneric(Board: IPCB_Board; Prim: TObject): String;
 const
-  Epsilon: Single = 0.001;
+  Epsilon = 0.001;
 var
   PnPout: TStringList;
   EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
