@@ -5,6 +5,8 @@ const
   epGenerate = 'epGenerate';
   epRunGUI = 'epRunGUI';
 
+  SCannotCreateDir = 'Unable to create the folder ''%s''';
+
 var
   CurrWorkSpace: IWorkSpace; // An Interface handle to the current workspace
   CurrProject: IProject; // An Interface handle to the current Project
@@ -2017,6 +2019,7 @@ var
   Data: String;
   AltiumPCBData, AltiumFontData: String;
   Config, AltiumConfig: String;
+  OutputDir: String;
 begin
   Config := GenerateNativeConfig(0);
   AltiumConfig := GenerateAltiumConfig(0);
@@ -2049,6 +2052,14 @@ begin
     GetWDFileName('web\user-file-examples\userheader.html'));
   Data := ReplaceEx(Data, 'USERFOOTER',
     GetWDFileName('web\user-file-examples\userfooter.html'));
+
+  OutputDir := ExtractFileDir
+    (ExpandFileName(GetOutputFileNameWithExtension('.html')));
+  if not DirectoryExists(OutputDir) and not ForceDirectories(OutputDir) then
+  begin
+    ShowMessage(Format(SCannotCreateDir, [OutputDir]));
+    Exit;
+  end;
 
   // Save the manipulated HTML to the output file
   s := TStringList.Create;
@@ -2153,7 +2164,16 @@ procedure DumpAsJS(pcbdata: String);
 var
   s: TStringList;
   Data: String;
+  OutputDir: String;
 begin
+  OutputDir := ExtractFileDir
+    (ExpandFileName(GetOutputFileNameWithExtension('.js')));
+  if not DirectoryExists(OutputDir) and not ForceDirectories(OutputDir) then
+  begin
+    ShowMessage(Format(SCannotCreateDir, [OutputDir]));
+    Exit;
+  end;
+
   s := TStringList.Create;
   s.Text := pcbdata;
   s.SaveToFile(GetOutputFileNameWithExtension('.js'));
@@ -2164,7 +2184,16 @@ procedure DumpAsJSON(pcbdata: String);
 var
   s: TStringList;
   Data: String;
+  OutputDir: String;
 begin
+  OutputDir := ExtractFileDir
+    (ExpandFileName(GetOutputFileNameWithExtension('.json')));
+  if not DirectoryExists(OutputDir) and not ForceDirectories(OutputDir) then
+  begin
+    ShowMessage(Format(SCannotCreateDir, [OutputDir]));
+    Exit;
+  end;
+
   s := TStringList.Create;
   s.Text := pcbdata;
   s.SaveToFile(GetOutputFileNameWithExtension('.json'));
@@ -2676,15 +2705,6 @@ Begin
     ColumnsParametersNames.DelimitedText;
   Result := Result + '|' + 'GroupParametersNames=' +
     GroupParametersNames.DelimitedText;
-end;
-
-procedure CreateFile(F: string);
-var
-  s: TStringList;
-begin
-  s := TStringList.Create;
-  s.SaveToFile(F);
-  s.Free;
 end;
 
 procedure OnFormCreated(AEntryPoint, Parameters: String);
