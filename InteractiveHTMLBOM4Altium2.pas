@@ -860,6 +860,7 @@ var
   X1, Y1, X2, Y2, _W, _H: Single;
   Width, Height: String;
   PadWidth, PadHeight: String;
+  PadRadius: String;
   PadPin1: Boolean;
   PadShape, PadDrillShape: String;
   PadDrillWidth, PadDrillHeight: String;
@@ -892,7 +893,11 @@ begin
         PadShape := 'rect';
       // 3:PadShape :='chamfrect';
       9:
-        PadShape := 'roundrect';
+        begin
+          PadShape := 'roundrect';
+          PadRadius := JSONFloatToStr
+            (CoordToMMs(Prim.CornerRadius(Prim.Layer)));
+        end;
       // default:
       // res['shape'] :='custom';
     end;
@@ -917,7 +922,11 @@ begin
         PadShape := 'rect';
       // 3:PadShape :='chamfrect';
       9:
-        PadShape := 'roundrect';
+        begin
+          PadShape := 'roundrect';
+          PadRadius := JSONFloatToStr
+            (CoordToMMs(Prim.CornerRadius(Prim.Layer)));
+        end;
       // default:
       // res['shape'] :='custom';
     end;
@@ -941,7 +950,11 @@ begin
         end;
       // 3:PadShape :='chamfrect';
       9:
-        PadShape := 'roundrect';
+        begin
+          PadShape := 'roundrect';
+          PadRadius := JSONFloatToStr
+            (CoordToMMs(Prim.CornerRadius(Prim.Layer)));
+        end;
       // default:
       // res['shape'] :='custom';
     end;
@@ -958,7 +971,11 @@ begin
         PadShape := 'rect';
       // 3:PadShape :='chamfrect';
       9:
-        PadShape := 'roundrect';
+        begin
+          PadShape := 'roundrect';
+          PadRadius := JSONFloatToStr
+            (CoordToMMs(Prim.CornerRadius(Prim.Layer)));
+        end;
       // default:
       // res['shape'] :='custom';
     end;
@@ -1017,6 +1034,10 @@ begin
   PnPout.Add('"size":' + '[' + PadWidth + ', ' + PadHeight + ']' + ',');
   PnPout.Add('"angle":' + PadAngle + ',');
   PnPout.Add('"shape":' + JSONStrToStr(PadShape) + ',');
+  if PadShape = 'roundrect' then
+  begin
+    PnPout.Add('"radius":' + PadRadius + ',');
+  end;
   // polygons
   // radius
   // chamfpos
