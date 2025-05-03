@@ -314,9 +314,9 @@ end;
 
 function GetFlatDoc(Dummy: Integer): IDocument;
 Begin
-  FlattenedDoc := CurrProject.DM_DocumentFlattened;
+  Result := CurrProject.DM_DocumentFlattened;
 
-  If (FlattenedDoc = Nil) Then
+  If (Result = Nil) Then
   Begin
     // First try compiling the project
     AddStringParameter('Action', 'Compile');
@@ -324,10 +324,8 @@ Begin
     RunProcess('WorkspaceManager:Compile');
 
     // Try Again to open the flattened document
-    FlattenedDoc := CurrProject.DM_DocumentFlattened;
+    Result := CurrProject.DM_DocumentFlattened;
   end;
-
-  Result := FlattenedDoc;
 end;
 
 procedure ListAllFields(Dummy: Integer);
@@ -1524,6 +1522,7 @@ var
   Board: IPCB_Board; // document board object
   Component: IPCB_Component; // component object
   Iterator: IPCB_BoardIterator;
+  FlattenedDocument: IDocument;
   SMDcomponent: Boolean;
   BoardUnits: String;
   // Current unit string mm/mils
@@ -1616,18 +1615,26 @@ Begin
   PnPout := TStringList.Create;
   Component := Iterator.FirstPCBObject;
 
+  FlattenedDocument := GetFlatDoc(0);
+
   While (Component <> Nil) Do
   Begin
     NoBOM := False;
-    // OPS/TODO
 
-    ccc := GetCompFromCompEx(Component);
-    // TODO: HOW?
-    CurrParm := ccc.DM_GetParameterByName('Component Kind');
-    // (CurrParm <> nil) and
-    if (CurrParm.DM_Value = 'Standard (No BOM)') then
+    // TODO: False if no project or schematic is loaded, or if compilation failed. Consider asking the user whether to continue
+    if (FlattenedDocument <> nil) and (FlattenedDocument.DM_ComponentCount > 0)
+    then
     begin
-      NoBOM := True;
+      // TODO: ccc = nil is possible?
+      ccc := GetCompFromCompEx(Component);
+
+      // TODO: HOW?
+      CurrParm := ccc.DM_GetParameterByName('Component Kind');
+      // (CurrParm <> nil) and
+      if (CurrParm.DM_Value = 'Standard (No BOM)') then
+      begin
+        NoBOM := True;
+      end;
     end;
 
     // Print Pick&Place data of SMD components to file
