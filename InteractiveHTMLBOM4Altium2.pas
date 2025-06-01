@@ -1637,9 +1637,15 @@ Begin
       end;
     end;
 
+    if not ComponentIsFittedInCurrentVariant(Component.SourceUniqueId,
+      Component.SourceDesignator, ProjectVariant) then
+    begin
+      NoBOM := True;
+    end;
+
     // Print Pick&Place data of SMD components to file
     if ComponentIsFittedInCurrentVariant(Component.SourceUniqueId,
-      Component.SourceDesignator, ProjectVariant) then
+      Component.SourceDesignator, ProjectVariant) or True then
       if (LayerFilterIndex = 0) or
         ((LayerFilterCb = 1) and (Component.Layer = eTopLayer)) or
         ((LayerFilterCb = 2) and (Component.Layer = eBottomLayer)) then
@@ -2180,7 +2186,8 @@ Begin
     Count := Count + 1;
   end;
 
-  PnPout.Add(']');
+  PnPout.Add(']' + ',');
+  PnPout.Add('"dnp_field":' + JSONStrToStr('NoBOM'));
   PnPout.Add('};');
 
   Result := PnPout.Text;

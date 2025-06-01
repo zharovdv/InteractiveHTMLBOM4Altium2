@@ -18,6 +18,18 @@ function getfield(_comp_, _fields_) {
     return fields;
 }
 
+function dnp(_comp_, dnp_field) {
+    for (const key in _comp_.extra_fields) {
+        var field = key;
+        if (field == dnp_field) {
+            if (field in _comp_.extra_fields)
+                return _comp_.extra_fields[field];
+        }
+    }
+
+    return false;
+}
+
 function getgroup(_comp_, _fields_) {
     var fields = [];
 
@@ -48,6 +60,7 @@ function fromaltium(_data_, _config_, _altiumconfig_) {
     //bom.skipped.push(index);
 
     var group_fields = _altiumconfig_.group_fields;
+    var dnp_field = _altiumconfig_.dnp_field;
     var show_fields = _config_.fields;
 
     var bom = {};
@@ -67,24 +80,28 @@ function fromaltium(_data_, _config_, _altiumconfig_) {
         var item = _data_.components[key];
         var groupKey = JSON.stringify(getgroup(item, group_fields));
 
-        if (item.layer == "F") {
-            if (!(groupKey in _F)) {
-                _F[groupKey] = [];
+        if (dnp(item, dnp_field)) {
+            bom.skipped.push(index);
+        } else {
+            if (item.layer == "F") {
+                if (!(groupKey in _F)) {
+                    _F[groupKey] = [];
+                }
+                _F[groupKey].push([item.ref, index]);
             }
-            _F[groupKey].push([item.ref, index]);
-        }
 
-        if (item.layer == "B") {
-            if (!(groupKey in _B)) {
-                _B[groupKey] = [];
+            if (item.layer == "B") {
+                if (!(groupKey in _B)) {
+                    _B[groupKey] = [];
+                }
+                _B[groupKey].push([item.ref, index]);
             }
-            _B[groupKey].push([item.ref, index]);
-        }
 
-        if (!(groupKey in _both)) {
-            _both[groupKey] = [];
+            if (!(groupKey in _both)) {
+                _both[groupKey] = [];
+            }
+            _both[groupKey].push([item.ref, index]);
         }
-        _both[groupKey].push([item.ref, index]);
 
         bom.fields[index] = getfield(item, show_fields);
 
