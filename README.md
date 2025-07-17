@@ -50,6 +50,8 @@ Set output format for generated file.
 2. JS - js file for my own needs
 3. JSON Generic - json file complies to the [schema](https://github.com/openscopeproject/InteractiveHtmlBom/tree/master/InteractiveHtmlBom/ecad/schema), that is needed to generate the [InteractiveHtmlBom](https://github.com/openscopeproject/InteractiveHtmlBom). See project wiki for [installation](https://github.com/openscopeproject/InteractiveHtmlBom/wiki/Installation) and [usage](https://github.com/openscopeproject/InteractiveHtmlBom/wiki/Usage) instructions.
 
+## Customization
+This project is an extension of the original [InteractiveHtmlBom](https://github.com/openscopeproject/InteractiveHtmlBom) project, specifically in terms of data extraction from Altium Designer. Any customization of the UI/UX of the generated document falls outside the scope of this project. In any case, I do my best to address questions as they arise, but before asking them, I recommend reviewing the relevant documentation [here](https://github.com/openscopeproject/InteractiveHtmlBom/wiki/Customization) and [here](https://github.com/openscopeproject/InteractiveHtmlBom/issues/405).
 
 ## License and credits
 
