@@ -1627,6 +1627,8 @@ Begin
       if (Component.ComponentKind = eComponentKind_Standard_NoBOM) then
       begin
         NoBOM := True;
+        Component := Iterator.NextPCBObject;
+        continue;
       end;
     end;
 
