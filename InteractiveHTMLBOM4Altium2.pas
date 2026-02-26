@@ -1539,7 +1539,6 @@ var
   Width, Height: String;
   CurrParm: IParameter;
   NoBOM: Boolean;
-  ccc: IComponent;
   Edges: String;
 
   EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
@@ -1625,13 +1624,7 @@ Begin
     if (FlattenedDocument <> nil) and (FlattenedDocument.DM_ComponentCount > 0)
     then
     begin
-      // TODO: ccc = nil is possible?
-      ccc := GetCompFromCompEx(Component);
-
-      // TODO: HOW?
-      CurrParm := ccc.DM_GetParameterByName('Component Kind');
-      // (CurrParm <> nil) and
-      if (CurrParm.DM_Value = 'Standard (No BOM)') then
+      if (Component.ComponentKind = eComponentKind_Standard_NoBOM) then
       begin
         NoBOM := True;
       end;
