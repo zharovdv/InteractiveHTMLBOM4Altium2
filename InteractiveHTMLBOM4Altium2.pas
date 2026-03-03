@@ -41,7 +41,11 @@ var
   ProjectRevision: String;
   ProjectCompany: String;
 
+  SkippedFootprints: TStringList;
+
   i: Integer;
+
+  FootprintIdCount: Integer;
 
 procedure SetupProjectVariant(Dummy: Integer); forward;
 function GetBoard(Dummy: Integer): IPCB_Board; forward;
@@ -793,8 +797,7 @@ begin
   PnPout.Add('"footprint":' + JSONStrToStr(Component.Pattern) + ',');
   PnPout.Add('"layer":' + JSONStrToStr(Layer) + ',');
   PnPout.Add('"ref":' + JSONStrToStr(Component.SourceDesignator) + ',');
-  PnPout.Add('"val":' + JSONStrToStr(Parameters.Values
-    [ValueParameterName]) + ',');
+  PnPout.Add('"val":' + JSONStrToStr(Parameters.Values[ValueParameterName]) + ',');
   PnPout.Add('"extra_fields": {');
 
   j := 0;
@@ -805,6 +808,11 @@ begin
       continue;
     if Key = '[Footprint]' then
       continue;
+
+    if ((NoBOM) And (Key = '[DesignItemID]')) then
+    begin
+      Parameters.Values[Key] := 'DNP-' + Parameters.Values[Key];
+    end;
 
     if (j > 0) then
       PnPout.Add(',');
@@ -1088,6 +1096,7 @@ var
   sl: TStringList;
   hhhhi: Integer;
   hhhh: String;
+  xxx: Integer;
 begin
   PnPout := TStringList.Create;
 
@@ -1137,6 +1146,11 @@ begin
   PnPout.Add('},');
   PnPout.Add('"pads": [');
 
+  if (Component.SourceDesignator = 'RA4') Then
+  begin
+       xxx := 0;
+  end;
+
   (*
     PnPout.Add('"Designator":' + JSONStrToStr(Component.SourceDesignator) + ',');
     PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
@@ -1163,9 +1177,19 @@ begin
   while (Prim <> nil) do
   begin
     Pad := Prim;
+
+    If ((Pad.Layer = eTopPaste) Or (Pad.Layer = eBottomPaste)) Then
+    begin
+         Prim := Iter.NextPCBObject;
+         continue;
+    end;
+
+
     Inc(PadsCount);
     If (PadsCount > 1) Then
       PnPout.Add(',');
+
+
 
     PnPout.Add(ParsePadGeneric(Board, Prim, Pad));
 
@@ -1572,7 +1596,14 @@ var
   FabricationB: String;
   FontData: String;
   i: Integer;
+  IsDnp : Boolean;
+  dummy2: Integer;
 Begin
+
+     FootprintIdCount := 0;
+     SkippedFootprints := TStringList.Create;
+     SkippedFootprints.Duplicates := dupIgnore;
+
   // Make sure the current Workspace opens or else quit this script
   CurrWorkSpace := GetWorkSpace;
   If (CurrWorkSpace = Nil) Then
@@ -1628,39 +1659,55 @@ Begin
   Begin
     NoBOM := False;
 
+
     // TODO: False if no project or schematic is loaded, or if compilation failed. Consider asking the user whether to continue
     if (FlattenedDocument <> nil) and (FlattenedDocument.DM_ComponentCount > 0)
     then
     begin
       if (Component.ComponentKind = eComponentKind_Standard_NoBOM) then
       begin
-        NoBOM := True;
+        {NoBOM := True;}
         Component := Iterator.NextPCBObject;
         continue;
       end;
     end;
 
     // Print Pick&Place data of SMD components to file
-    if ComponentIsFittedInCurrentVariant(Component.SourceUniqueId,
-      Component.SourceDesignator, ProjectVariant) then
-      if (LayerFilterIndex = 0) or
-        ((LayerFilterCb = 1) and (Component.Layer = eTopLayer)) or
-        ((LayerFilterCb = 2) and (Component.Layer = eBottomLayer)) then
-      Begin
-        Inc(Count);
-        If (Count > 1) Then
-        begin
-          Components := Components + ','; // PnPout.Add(',');
-          Footprints := Footprints + ','; // PnPout.Add(',');
-        end;
 
-        Components := Components + ParseComponentGeneric(Board, Component,
-          SelectedFields, SelectedGroupParameters, NoBOM);
-        Footprints := Footprints + ParseFootprintGeneric(Board,
-          Component, NoBOM);
 
-        // PnPout.Add(ParseComponent(Board, Component, SelectedFields, SelectedGroupParameters, NoBOM));
+    IsDnp := Not ComponentIsFittedInCurrentVariant(Component.SourceUniqueId, Component.SourceDesignator, ProjectVariant);
+    if (LayerFilterIndex = 0) or
+      ((LayerFilterCb = 1) and (Component.Layer = eTopLayer)) or
+      ((LayerFilterCb = 2) and (Component.Layer = eBottomLayer)) then
+    Begin
+      Inc(Count);
+      If (Count > 1) Then
+      begin
+        Components := Components + ','; // PnPout.Add(',');
+        Footprints := Footprints + ','; // PnPout.Add(',');
       end;
+
+//      if (Component.SourceDesignator = 'R95') Then
+//      begin
+//           dummy2 := 0;
+//      end;
+
+      if (IsDnp) Then
+      Begin
+        SkippedFootprints.Add(IntToStr(FootprintIdCount));
+      end;
+
+      // Components are only the populated components
+      if (Not IsDnp) Then
+      Begin
+
+      End;
+
+      // All footprints are required for display
+      Components := Components + ParseComponentGeneric(Board, Component, SelectedFields, SelectedGroupParameters, IsDnp);
+      Footprints := Footprints + ParseFootprintGeneric(Board, Component, IsDnp);
+      Inc(FootprintIdCount);
+    end;
     Component := Iterator.NextPCBObject;
   end;
   Board.BoardIterator_Destroy(Iterator);
@@ -2181,6 +2228,7 @@ Begin
   end;
 
   PnPout.Add(']' + ',');
+  PnPout.Add('"skipped": [' + SkippedFootprints.CommaText + ']' + ',');
   PnPout.Add('"show_pads":' + JSONBoolToStr(True) + ',');
   PnPout.Add('"layer_view":' + JSONStrToStr('FB') + ',');
   PnPout.Add('};');
@@ -2685,6 +2733,7 @@ Begin
   ColumnsParametersNames.Add('[DesignItemID]');
   ColumnsParametersNames.Add('[Footprint]');
   ColumnsParametersNames.Add('[Description]');
+
 
   GroupParametersNames := TStringList.Create;
   GroupParametersNames.Delimiter := ',';

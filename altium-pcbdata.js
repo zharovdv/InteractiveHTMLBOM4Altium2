@@ -55,7 +55,7 @@ function fromaltium(_data_, _config_, _altiumconfig_) {
     bom.F = [];
     bom.both = [];
     bom.fields = {};
-    bom.skipped = [];
+    bom.skipped = _config_.skipped;
 
     var index = 0;
 
