@@ -37,6 +37,12 @@ var
   EntryPoint: String;
   BaseFullDir: String;
 
+  ProjectTitle: String;
+  ProjectRevision: String;
+  ProjectCompany: String;
+
+  i: Integer;
+
 procedure SetupProjectVariant(Dummy: Integer); forward;
 function GetBoard(Dummy: Integer): IPCB_Board; forward;
 function GenerateNativeConfig(Dummy: Integer): String; forward;
@@ -1562,6 +1568,8 @@ var
   Footprints: String;
   SilkscreenF: String;
   SilkscreenB: String;
+  FabricationF: String;
+  FabricationB: String;
   FontData: String;
   i: Integer;
 Begin
@@ -1735,12 +1743,14 @@ Begin
   TracksB := '';
   SilkscreenF := '';
   SilkscreenB := '';
+  FabricationF := '';
+  FabricationB := '';
   ZonesF := '';
   ZonesB := '';
 
   Iter := Board.BoardIterator_Create;
   Iter.AddFilter_LayerSet(MkSet(eTopOverlay, eBottomOverlay, eTopLayer,
-    eBottomLayer, eMultiLayer));
+    eBottomLayer, eMultiLayer, eMechanical11, eMechanical12));
   Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject, eTextObject,
     ePolyObject, eRegionObject, eViaObject));
   Iter.AddFilter_Method(eProcessAll);
@@ -1793,7 +1803,20 @@ Begin
               SilkscreenB := SilkscreenB + ', ';
             SilkscreenB := SilkscreenB + ParseTextGeneric(Board, Prim);
           end;
+          If (Prim.Layer = eMechanical11) Then
+          begin
+            if Length(FabricationF) > 0 then
+              FabricationF := FabricationF + ', ';
+            FabricationF := FabricationF + ParseTextGeneric(Board, Prim);
+          end;
+          If (Prim.Layer = eMechanical12) Then
+          begin
+            if Length(FabricationB) > 0 then
+              FabricationB := FabricationB + ', ';
+            FabricationB := FabricationB + ParseTextGeneric(Board, Prim);
+          end;
         end;
+
       eArcObject:
         begin
           If (Prim.Layer = eTopOverlay) Then
@@ -1807,6 +1830,18 @@ Begin
             if Length(SilkscreenB) > 0 then
               SilkscreenB := SilkscreenB + ', ';
             SilkscreenB := SilkscreenB + ParseArcGeneric(Board, Prim);
+          end;
+          If (Prim.Layer = eMechanical11) Then
+          begin
+            if Length(FabricationF) > 0 then
+              FabricationF := FabricationF + ', ';
+            FabricationF := FabricationF + ParseArcGeneric(Board, Prim);
+          end;
+          If (Prim.Layer = eMechanical12) Then
+          begin
+            if Length(FabricationB) > 0 then
+              FabricationB := FabricationB + ', ';
+            FabricationB := FabricationB + ParseArcGeneric(Board, Prim);
           end;
         end;
       eTrackObject:
@@ -1834,6 +1869,18 @@ Begin
             if Length(TracksB) > 0 then
               TracksB := TracksB + ', ';
             TracksB := TracksB + ParseTrackGeneric(Board, Prim, True);
+          end;
+          If (Prim.Layer = eMechanical11) Then
+          begin
+            if Length(FabricationF) > 0 then
+              FabricationF := FabricationF + ', ';
+            FabricationF := FabricationF + ParseTrackGeneric(Board, Prim, False);
+          end;
+          If (Prim.Layer = eMechanical12) Then
+          begin
+            if Length(FabricationB) > 0 then
+              FabricationB := FabricationB + ', ';
+            FabricationB := FabricationB + ParseTrackGeneric(Board, Prim, False);
           end;
         end;
       eViaObject:
@@ -1920,7 +1967,7 @@ Begin
   Metadata := Metadata + '"title":' + JSONStrToStr(Title) + ',';
   Metadata := Metadata + '"revision":' + JSONStrToStr(Revision) + ',';
   Metadata := Metadata + '"company":' + JSONStrToStr(Company) + ',';
-  Metadata := Metadata + '"date":' + JSONStrToStr('todo');
+  Metadata := Metadata + '"date":' + JSONStrToStr('');
 
   (* PnPout.Add('},');
     PnPout.Add('"Settings":{');
@@ -1944,8 +1991,8 @@ Begin
   PnPout.Add('},');
 
   PnPout.Add('"fabrication": {');
-  PnPout.Add('"F": [' + '' + '],');
-  PnPout.Add('"B": [' + '' + ']');
+  PnPout.Add('"F": [' + FabricationF + '],');
+  PnPout.Add('"B": [' + FabricationB + ']');
   PnPout.Add('}');
 
   PnPout.Add('},');
@@ -2488,6 +2535,26 @@ Begin
   If CurrProject = Nil Then
     Exit;
 
+  // Get some project parameters
+  If CurrProject.DM_ParameterCount > 0 Then
+  Begin
+    For i := 0 to CurrProject.DM_ParameterCount-1 Do
+    begin
+         if CurrProject.DM_Parameters(i).DM_Name = 'ProjectTitle' Then
+         Begin
+             ProjectTitle := CurrProject.DM_Parameters(i).DM_Value;
+         End;
+         if CurrProject.DM_Parameters(i).DM_Name = 'CompanyName' Then
+         Begin
+             ProjectCompany := CurrProject.DM_Parameters(i).DM_Value;
+         End;
+          if CurrProject.DM_Parameters(i).DM_Name = 'Revision' Then
+         Begin
+             ProjectRevision := CurrProject.DM_Parameters(i).DM_Value;
+         End;
+    end;
+  End;
+
   // [!!!]
   SetupProjectVariant(0);
   {
@@ -2552,9 +2619,9 @@ Begin
   AddTracksChk.Checked := AddTracks;
   Highlighting1PinChk.Checked := Highlighting1Pin;
   FabLayerChk.Checked := FabLayer;
-  TitleEdt.Text := Title;
-  CompanyEdt.Text := Company;
-  RevisionEdt.Text := Revision;
+  TitleEdt.Text := ProjectTitle + ' (' + ProjectVariant.DM_Description + ')';
+  CompanyEdt.Text := ProjectCompany;
+  RevisionEdt.Text := ProjectRevision;
   ValueParameterCb.ItemIndex := ValueParameterCb.Items.IndexOf
     (ValueParameterName);
   for i := 0 to ColumnsParametersNames.Count - 1 do
@@ -2611,17 +2678,18 @@ Begin
   Company := 'Company';
   Revision := 'Revision: 1';
   ValueParameterName := 'Value';
+
   ColumnsParametersNames := TStringList.Create;
   ColumnsParametersNames.Delimiter := ',';
   ColumnsParametersNames.StrictDelimiter := True;
-  ColumnsParametersNames.Add('Value');
+  ColumnsParametersNames.Add('[DesignItemID]');
   ColumnsParametersNames.Add('[Footprint]');
+  ColumnsParametersNames.Add('[Description]');
 
   GroupParametersNames := TStringList.Create;
   GroupParametersNames.Delimiter := ',';
   GroupParametersNames.StrictDelimiter := True;
-  GroupParametersNames.Add('Value');
-  GroupParametersNames.Add('[Footprint]');
+  GroupParametersNames.Add('[DesignItemID]');
 
   // Overwrite defaults (if values are provided in Parameter list)
   {
