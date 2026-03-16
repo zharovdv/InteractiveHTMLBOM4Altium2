@@ -1366,6 +1366,12 @@ var
   EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeHeight: String;
   EdgeType: String;
 begin
+  if Length(Prim.Text) = 0 then
+  begin
+    Result := '';
+    Exit;
+  end;
+
   PnPout := TStringList.Create;
 
   If (Prim.Layer = eTopOverlay) Then
