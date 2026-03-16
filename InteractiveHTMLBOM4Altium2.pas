@@ -1366,12 +1366,6 @@ var
   EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeHeight: String;
   EdgeType: String;
 begin
-  if Length(Prim.Text) = 0 then
-  begin
-    Result := '';
-    Exit;
-  end;
-
   PnPout := TStringList.Create;
 
   If (Prim.Layer = eTopOverlay) Then
@@ -1415,8 +1409,10 @@ begin
   else if (Prim.TextKind = 1) then
   begin
     EdgeHeight := JSONFloatToStr(CoordToMMs(Prim.TTFTextHeight * 0.6));
-    EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.TTFTextWidth * 0.9 /
-      Length(Prim.Text)));
+    if Length(Prim.Text) > 0 then
+      EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.TTFTextWidth * 0.9 / Length(Prim.Text)))
+    else
+      EdgeWidth := JSONFloatToStr(0);
     // res["thickness"] = CoordToMMs(res["height"] * 0.1);
   end;
   // OPS TODO
