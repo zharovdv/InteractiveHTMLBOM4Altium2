@@ -118,6 +118,15 @@ var
   numPcbDocs: Integer;
 
 begin
+  // NOTE: This code should return the path to the primary PCB document
+  Document := Project.DM_PrimaryImplementationDocument;
+  If (Document <> Nil) and (Document.DM_DocumentKind = constKindPcb) Then
+  begin
+    pcbDocPath := Document.DM_FullPath;
+    Exit;
+  end;
+
+  // NOTE: This code is a legacy fallback
 
   { For now, assume/hope/pray that we will succeed. }
   Result := 0;
@@ -1410,7 +1419,8 @@ begin
   begin
     EdgeHeight := JSONFloatToStr(CoordToMMs(Prim.TTFTextHeight * 0.6));
     if Length(Prim.Text) > 0 then
-      EdgeWidth := JSONFloatToStr(CoordToMMs(Prim.TTFTextWidth * 0.9 / Length(Prim.Text)))
+      EdgeWidth := JSONFloatToStr
+        (CoordToMMs(Prim.TTFTextWidth * 0.9 / Length(Prim.Text)))
     else
       EdgeWidth := JSONFloatToStr(0);
     // res["thickness"] = CoordToMMs(res["height"] * 0.1);
