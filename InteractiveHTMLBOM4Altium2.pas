@@ -1462,7 +1462,7 @@ begin
   PnPout.Add('"height":' + EdgeHeight + ',');
   PnPout.Add('"width":' + EdgeWidth + ',');
   PnPout.Add('"justify":' + '[0, 0]' + ',');
-  PnPout.Add('"thickness":' + JSONFloatToStr(0.15) + ',');
+  PnPout.Add('"thickness":' + JSONFloatToStr(0.07) + ',');
   if Prim.MirrorFlag then
     PnPout.Add('"attr":' + '["mirrored"]' + ',')
   else
