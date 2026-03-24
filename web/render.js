@@ -24,12 +24,17 @@ function drawText(ctx, text, color) {
   ctx.strokeStyle = color;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  ctx.lineWidth = text.thickness;
   if ("svgpath" in text) {
-    ctx.stroke(new Path2D(text.svgpath));
+    if ("thickness" in text) {
+      ctx.lineWidth = text.thickness;
+      ctx.stroke(new Path2D(text.svgpath));
+    } else if ("fillrule" in text) {
+      ctx.fill(new Path2D(text.svgpath), text.fillrule);
+    }
     ctx.restore();
     return;
   }
+  ctx.lineWidth = text.thickness;
   if ("polygons" in text) {
     ctx.fill(getPolygonsPath(text));
     ctx.restore();

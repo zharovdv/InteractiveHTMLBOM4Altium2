@@ -37,6 +37,16 @@ var
   EntryPoint: String;
   BaseFullDir: String;
 
+  ProjectTitle: String;
+  ProjectRevision: String;
+  ProjectCompany: String;
+
+  SkippedFootprints: TStringList;
+
+  i: Integer;
+
+  FootprintIdCount: Integer;
+
 procedure SetupProjectVariant(Dummy: Integer); forward;
 function GetBoard(Dummy: Integer): IPCB_Board; forward;
 function GenerateNativeConfig(Dummy: Integer): String; forward;
@@ -796,8 +806,7 @@ begin
   PnPout.Add('"footprint":' + JSONStrToStr(Component.Pattern) + ',');
   PnPout.Add('"layer":' + JSONStrToStr(Layer) + ',');
   PnPout.Add('"ref":' + JSONStrToStr(Component.SourceDesignator) + ',');
-  PnPout.Add('"val":' + JSONStrToStr(Parameters.Values
-    [ValueParameterName]) + ',');
+  PnPout.Add('"val":' + JSONStrToStr(Parameters.Values[ValueParameterName]) + ',');
   PnPout.Add('"extra_fields": {');
 
   j := 0;
@@ -808,6 +817,11 @@ begin
       continue;
     if Key = '[Footprint]' then
       continue;
+
+    if ((NoBOM) And (Key = '[DesignItemID]')) then
+    begin
+      Parameters.Values[Key] := 'DNP-' + Parameters.Values[Key];
+    end;
 
     if (j > 0) then
       PnPout.Add(',');
@@ -1091,6 +1105,7 @@ var
   sl: TStringList;
   hhhhi: Integer;
   hhhh: String;
+  xxx: Integer;
 begin
   PnPout := TStringList.Create;
 
@@ -1140,6 +1155,11 @@ begin
   PnPout.Add('},');
   PnPout.Add('"pads": [');
 
+  if (Component.SourceDesignator = 'RA4') Then
+  begin
+       xxx := 0;
+  end;
+
   (*
     PnPout.Add('"Designator":' + JSONStrToStr(Component.SourceDesignator) + ',');
     PnPout.Add('"Layer":' + JSONStrToStr(Layer) + ',');
@@ -1166,9 +1186,19 @@ begin
   while (Prim <> nil) do
   begin
     Pad := Prim;
+
+    If ((Pad.Layer = eTopPaste) Or (Pad.Layer = eBottomPaste)) Then
+    begin
+         Prim := Iter.NextPCBObject;
+         continue;
+    end;
+
+
     Inc(PadsCount);
     If (PadsCount > 1) Then
       PnPout.Add(',');
+
+
 
     PnPout.Add(ParsePadGeneric(Board, Prim, Pad));
 
@@ -1444,7 +1474,7 @@ begin
   PnPout.Add('"height":' + EdgeHeight + ',');
   PnPout.Add('"width":' + EdgeWidth + ',');
   PnPout.Add('"justify":' + '[0, 0]' + ',');
-  PnPout.Add('"thickness":' + JSONFloatToStr(0.15) + ',');
+  PnPout.Add('"thickness":' + JSONFloatToStr(0.07) + ',');
   if Prim.MirrorFlag then
     PnPout.Add('"attr":' + '["mirrored"]' + ',')
   else
@@ -1551,7 +1581,6 @@ var
   Width, Height: String;
   CurrParm: IParameter;
   NoBOM: Boolean;
-  ccc: IComponent;
   Edges: String;
 
   EdgeWidth, EdgeX1, EdgeY1, EdgeX2, EdgeY2, EdgeRadius: String;
@@ -1575,9 +1604,18 @@ var
   Footprints: String;
   SilkscreenF: String;
   SilkscreenB: String;
+  FabricationF: String;
+  FabricationB: String;
   FontData: String;
   i: Integer;
+  IsDnp : Boolean;
+  dummy2: Integer;
 Begin
+
+     FootprintIdCount := 0;
+     SkippedFootprints := TStringList.Create;
+     SkippedFootprints.Duplicates := dupIgnore;
+
   // Make sure the current Workspace opens or else quit this script
   CurrWorkSpace := GetWorkSpace;
   If (CurrWorkSpace = Nil) Then
@@ -1633,43 +1671,55 @@ Begin
   Begin
     NoBOM := False;
 
+
     // TODO: False if no project or schematic is loaded, or if compilation failed. Consider asking the user whether to continue
     if (FlattenedDocument <> nil) and (FlattenedDocument.DM_ComponentCount > 0)
     then
     begin
-      // TODO: ccc = nil is possible?
-      ccc := GetCompFromCompEx(Component);
-
-      // TODO: HOW?
-      CurrParm := ccc.DM_GetParameterByName('Component Kind');
-      // (CurrParm <> nil) and
-      if (CurrParm.DM_Value = 'Standard (No BOM)') then
+      if (Component.ComponentKind = eComponentKind_Standard_NoBOM) then
       begin
-        NoBOM := True;
+        {NoBOM := True;}
+        Component := Iterator.NextPCBObject;
+        continue;
       end;
     end;
 
     // Print Pick&Place data of SMD components to file
-    if ComponentIsFittedInCurrentVariant(Component.SourceUniqueId,
-      Component.SourceDesignator, ProjectVariant) then
-      if (LayerFilterIndex = 0) or
-        ((LayerFilterCb = 1) and (Component.Layer = eTopLayer)) or
-        ((LayerFilterCb = 2) and (Component.Layer = eBottomLayer)) then
-      Begin
-        Inc(Count);
-        If (Count > 1) Then
-        begin
-          Components := Components + ','; // PnPout.Add(',');
-          Footprints := Footprints + ','; // PnPout.Add(',');
-        end;
 
-        Components := Components + ParseComponentGeneric(Board, Component,
-          SelectedFields, SelectedGroupParameters, NoBOM);
-        Footprints := Footprints + ParseFootprintGeneric(Board,
-          Component, NoBOM);
 
-        // PnPout.Add(ParseComponent(Board, Component, SelectedFields, SelectedGroupParameters, NoBOM));
+    IsDnp := Not ComponentIsFittedInCurrentVariant(Component.SourceUniqueId, Component.SourceDesignator, ProjectVariant);
+    if (LayerFilterIndex = 0) or
+      ((LayerFilterCb = 1) and (Component.Layer = eTopLayer)) or
+      ((LayerFilterCb = 2) and (Component.Layer = eBottomLayer)) then
+    Begin
+      Inc(Count);
+      If (Count > 1) Then
+      begin
+        Components := Components + ','; // PnPout.Add(',');
+        Footprints := Footprints + ','; // PnPout.Add(',');
       end;
+
+//      if (Component.SourceDesignator = 'R95') Then
+//      begin
+//           dummy2 := 0;
+//      end;
+
+      if (IsDnp) Then
+      Begin
+        SkippedFootprints.Add(IntToStr(FootprintIdCount));
+      end;
+
+      // Components are only the populated components
+      if (Not IsDnp) Then
+      Begin
+
+      End;
+
+      // All footprints are required for display
+      Components := Components + ParseComponentGeneric(Board, Component, SelectedFields, SelectedGroupParameters, IsDnp);
+      Footprints := Footprints + ParseFootprintGeneric(Board, Component, IsDnp);
+      Inc(FootprintIdCount);
+    end;
     Component := Iterator.NextPCBObject;
   end;
   Board.BoardIterator_Destroy(Iterator);
@@ -1752,12 +1802,14 @@ Begin
   TracksB := '';
   SilkscreenF := '';
   SilkscreenB := '';
+  FabricationF := '';
+  FabricationB := '';
   ZonesF := '';
   ZonesB := '';
 
   Iter := Board.BoardIterator_Create;
   Iter.AddFilter_LayerSet(MkSet(eTopOverlay, eBottomOverlay, eTopLayer,
-    eBottomLayer, eMultiLayer));
+    eBottomLayer, eMultiLayer, eMechanical11, eMechanical12));
   Iter.AddFilter_ObjectSet(MkSet(eArcObject, eTrackObject, eTextObject,
     ePolyObject, eRegionObject, eViaObject));
   Iter.AddFilter_Method(eProcessAll);
@@ -1810,7 +1862,20 @@ Begin
               SilkscreenB := SilkscreenB + ', ';
             SilkscreenB := SilkscreenB + ParseTextGeneric(Board, Prim);
           end;
+          If (Prim.Layer = eMechanical11) Then
+          begin
+            if Length(FabricationF) > 0 then
+              FabricationF := FabricationF + ', ';
+            FabricationF := FabricationF + ParseTextGeneric(Board, Prim);
+          end;
+          If (Prim.Layer = eMechanical12) Then
+          begin
+            if Length(FabricationB) > 0 then
+              FabricationB := FabricationB + ', ';
+            FabricationB := FabricationB + ParseTextGeneric(Board, Prim);
+          end;
         end;
+
       eArcObject:
         begin
           If (Prim.Layer = eTopOverlay) Then
@@ -1824,6 +1889,18 @@ Begin
             if Length(SilkscreenB) > 0 then
               SilkscreenB := SilkscreenB + ', ';
             SilkscreenB := SilkscreenB + ParseArcGeneric(Board, Prim);
+          end;
+          If (Prim.Layer = eMechanical11) Then
+          begin
+            if Length(FabricationF) > 0 then
+              FabricationF := FabricationF + ', ';
+            FabricationF := FabricationF + ParseArcGeneric(Board, Prim);
+          end;
+          If (Prim.Layer = eMechanical12) Then
+          begin
+            if Length(FabricationB) > 0 then
+              FabricationB := FabricationB + ', ';
+            FabricationB := FabricationB + ParseArcGeneric(Board, Prim);
           end;
         end;
       eTrackObject:
@@ -1851,6 +1928,18 @@ Begin
             if Length(TracksB) > 0 then
               TracksB := TracksB + ', ';
             TracksB := TracksB + ParseTrackGeneric(Board, Prim, True);
+          end;
+          If (Prim.Layer = eMechanical11) Then
+          begin
+            if Length(FabricationF) > 0 then
+              FabricationF := FabricationF + ', ';
+            FabricationF := FabricationF + ParseTrackGeneric(Board, Prim, False);
+          end;
+          If (Prim.Layer = eMechanical12) Then
+          begin
+            if Length(FabricationB) > 0 then
+              FabricationB := FabricationB + ', ';
+            FabricationB := FabricationB + ParseTrackGeneric(Board, Prim, False);
           end;
         end;
       eViaObject:
@@ -1937,7 +2026,7 @@ Begin
   Metadata := Metadata + '"title":' + JSONStrToStr(Title) + ',';
   Metadata := Metadata + '"revision":' + JSONStrToStr(Revision) + ',';
   Metadata := Metadata + '"company":' + JSONStrToStr(Company) + ',';
-  Metadata := Metadata + '"date":' + JSONStrToStr('todo');
+  Metadata := Metadata + '"date":' + JSONStrToStr('');
 
   (* PnPout.Add('},');
     PnPout.Add('"Settings":{');
@@ -1961,8 +2050,8 @@ Begin
   PnPout.Add('},');
 
   PnPout.Add('"fabrication": {');
-  PnPout.Add('"F": [' + '' + '],');
-  PnPout.Add('"B": [' + '' + ']');
+  PnPout.Add('"F": [' + FabricationF + '],');
+  PnPout.Add('"B": [' + FabricationB + ']');
   PnPout.Add('}');
 
   PnPout.Add('},');
@@ -2151,6 +2240,7 @@ Begin
   end;
 
   PnPout.Add(']' + ',');
+  PnPout.Add('"skipped": [' + SkippedFootprints.CommaText + ']' + ',');
   PnPout.Add('"show_pads":' + JSONBoolToStr(True) + ',');
   PnPout.Add('"layer_view":' + JSONStrToStr('FB') + ',');
   PnPout.Add('};');
@@ -2505,6 +2595,26 @@ Begin
   If CurrProject = Nil Then
     Exit;
 
+  // Get some project parameters
+  If CurrProject.DM_ParameterCount > 0 Then
+  Begin
+    For i := 0 to CurrProject.DM_ParameterCount-1 Do
+    begin
+         if CurrProject.DM_Parameters(i).DM_Name = 'ProjectTitle' Then
+         Begin
+             ProjectTitle := CurrProject.DM_Parameters(i).DM_Value;
+         End;
+         if CurrProject.DM_Parameters(i).DM_Name = 'CompanyName' Then
+         Begin
+             ProjectCompany := CurrProject.DM_Parameters(i).DM_Value;
+         End;
+          if CurrProject.DM_Parameters(i).DM_Name = 'Revision' Then
+         Begin
+             ProjectRevision := CurrProject.DM_Parameters(i).DM_Value;
+         End;
+    end;
+  End;
+
   // [!!!]
   SetupProjectVariant(0);
   {
@@ -2569,9 +2679,9 @@ Begin
   AddTracksChk.Checked := AddTracks;
   Highlighting1PinChk.Checked := Highlighting1Pin;
   FabLayerChk.Checked := FabLayer;
-  TitleEdt.Text := Title;
-  CompanyEdt.Text := Company;
-  RevisionEdt.Text := Revision;
+  TitleEdt.Text := ProjectTitle + ' (' + ProjectVariant.DM_Description + ')';
+  CompanyEdt.Text := ProjectCompany;
+  RevisionEdt.Text := ProjectRevision;
   ValueParameterCb.ItemIndex := ValueParameterCb.Items.IndexOf
     (ValueParameterName);
   for i := 0 to ColumnsParametersNames.Count - 1 do
@@ -2628,17 +2738,19 @@ Begin
   Company := 'Company';
   Revision := 'Revision: 1';
   ValueParameterName := 'Value';
+
   ColumnsParametersNames := TStringList.Create;
   ColumnsParametersNames.Delimiter := ',';
   ColumnsParametersNames.StrictDelimiter := True;
-  ColumnsParametersNames.Add('Value');
+  ColumnsParametersNames.Add('[DesignItemID]');
   ColumnsParametersNames.Add('[Footprint]');
+  ColumnsParametersNames.Add('[Description]');
+
 
   GroupParametersNames := TStringList.Create;
   GroupParametersNames.Delimiter := ',';
   GroupParametersNames.StrictDelimiter := True;
-  GroupParametersNames.Add('Value');
-  GroupParametersNames.Add('[Footprint]');
+  GroupParametersNames.Add('[DesignItemID]');
 
   // Overwrite defaults (if values are provided in Parameter list)
   {
